@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://giani.local/schemas/render-cues-v1.json",
+  "title": "Giani render cue sheet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "lower_third",
+    "end_card",
+    "cues"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "lower_third": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "title",
+        "date",
+        "start_seconds",
+        "end_seconds"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "date": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    },
+    "end_card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "duration_seconds"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 15
+        }
+      }
+    },
+    "cues": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/cue"
+      }
+    },
+    "cue_template": {
+      "$ref": "#/$defs/cue"
+    }
+  },
+  "$defs": {
+    "cue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_seconds",
+        "end_seconds",
+        "file"
+      ],
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "start_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_seconds": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fit": {
+          "enum": [
+            "cover",
+            "contain"
+          ],
+          "default": "cover"
+        }
+      }
+    }
+  }
+}

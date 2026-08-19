@@ -1,0 +1,250 @@
+{
+  "name": "Giani - 06:30 neutral research digest",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "42cf6818-fd53-4d40-99f7-b61fe1ba04f9",
+      "name": "Run manually",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -720,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "b05251a2-b05a-4c07-ac31-33f52e3cf381",
+      "name": "06:30 Asia Kolkata",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -720,
+        -20
+      ],
+      "notesInFlow": true,
+      "notes": "Runs daily at 06:30 in the workflow timezone (Asia/Kolkata). The imported workflow is inactive until an owner reviews and activates it."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.NEWSROOM_INTERNAL_URL || 'http://newsroom:8000') + '/api/research/refresh' }}",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"live\": true } }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "50c9869b-322c-4842-ab3d-0a54fde42ae0",
+      "name": "Refresh newsroom research",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -460,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Calls the API over the private Compose network. It does not select stories, invent an angle, or write a script."
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json.body ?? $json;\nconst stories = Array.isArray(payload.stories) ? payload.stories : [];\nconst clean = (value) => String(value ?? '').replace(/[\\r\\n]+/g, ' ').replace(/\\s+/g, ' ').trim();\nconst ranked = stories\n  .filter((story) => story && clean(story.title))\n  .sort((a, b) => Number(b.score ?? 0) - Number(a.score ?? 0))\n  .slice(0, 8);\n\nconst stamp = new Intl.DateTimeFormat('en-IN', {\n  timeZone: 'Asia/Kolkata',\n  dateStyle: 'medium',\n  timeStyle: 'short',\n}).format(new Date());\n\nconst lines = [\n  `AI NEWS SHORTLIST — ${stamp} IST`,\n  `Mode: ${clean(payload.mode || 'unknown')} | Fetched: ${Number(payload.fetched ?? stories.length)} | Stored: ${Number(payload.stored ?? stories.length)}`,\n  '',\n];\n\nranked.forEach((story, index) => {\n  lines.push(`${index + 1}. ${clean(story.title)}`);\n  lines.push(`Source: ${clean(story.source || 'Unknown')}`);\n  if (clean(story.summary)) lines.push(`Summary: ${clean(story.summary)}`);\n  if (clean(story.why_it_matters)) lines.push(`Why it may matter: ${clean(story.why_it_matters)}`);\n  if (clean(story.url)) lines.push(clean(story.url));\n  lines.push('');\n});\n\nif (ranked.length === 0) {\n  lines.push('No stories were returned. Inspect the refresh execution and API errors.');\n}\n\nconst errors = Array.isArray(payload.errors) ? payload.errors.map(clean).filter(Boolean) : [];\nif (errors.length) {\n  lines.push('Refresh warnings:');\n  errors.forEach((error) => lines.push(`- ${error}`));\n}\n\nconst telegramEnabled = String($env.TELEGRAM_ENABLED || 'false').toLowerCase() === 'true';\nconst telegramConfigured = Boolean($env.TELEGRAM_CHAT_ID);\n\nreturn [{\n  json: {\n    generated_at: new Date().toISOString(),\n    mode: payload.mode || 'unknown',\n    story_count: ranked.length,\n    stories: ranked,\n    digest: lines.join('\\n').trim(),\n    telegram_enabled: telegramEnabled && telegramConfigured,\n    telegram_status: telegramEnabled\n      ? (telegramConfigured ? 'enabled; Telegram credential must also be selected on the delivery node' : 'requested but missing TELEGRAM_CHAT_ID')\n      : 'disabled by TELEGRAM_ENABLED=false',\n  },\n}];"
+      },
+      "id": "0daac24e-1843-4f5c-9d86-f0e8c88ea03a",
+      "name": "Format neutral top 8",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Deterministic formatting only: score-sort, top eight, and neutral API-provided summaries. Editorial selection and angle remain human tasks."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e3290488-b410-44de-a94f-d481251fd48c",
+              "leftValue": "={{ $json.telegram_enabled }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "47726673-b95f-4340-a25f-07488a6e673e",
+      "name": "Telegram explicitly enabled?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        60,
+        80
+      ],
+      "notesInFlow": true,
+      "notes": "Default is false. Set TELEGRAM_ENABLED=true and supply the bot token/chat ID only in infra/.env to take the true branch."
+    },
+    {
+      "parameters": {
+        "jsCode": "const limit = 3900;\nconst paragraphs = String($json.digest || '').split(/\\n\\n+/);\nconst chunks = [];\nlet current = '';\nfor (const paragraph of paragraphs) {\n  if (paragraph.length > limit) {\n    if (current) chunks.push(current);\n    for (let offset = 0; offset < paragraph.length; offset += limit) chunks.push(paragraph.slice(offset, offset + limit));\n    current = '';\n    continue;\n  }\n  const candidate = current ? `${current}\\n\\n${paragraph}` : paragraph;\n  if (candidate.length > limit) {\n    chunks.push(current);\n    current = paragraph;\n  } else {\n    current = candidate;\n  }\n}\nif (current) chunks.push(current);\nreturn chunks.map((telegram_text, index) => ({\n  json: { ...$json, telegram_text, telegram_chunk: index + 1, telegram_chunk_count: chunks.length },\n}));"
+      },
+      "id": "a4300a89-4f9d-4cb4-8da9-b4fd84851084",
+      "name": "Split for Telegram limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        330,
+        -20
+      ],
+      "notesInFlow": true,
+      "notes": "Telegram messages are limited to 4096 characters; leave headroom and send ordered chunks."
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.telegram_text }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "disable_web_page_preview": true
+        }
+      },
+      "id": "66b294c4-69cc-4fc9-99d7-f0f6487ed858",
+      "name": "Optional Telegram delivery",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        600,
+        -20
+      ],
+      "notesInFlow": true,
+      "notes": "No credential is embedded. After import, create/select an n8n Telegram API credential here. Leave TELEGRAM_ENABLED=false until that is done."
+    },
+    {
+      "parameters": {
+        "jsCode": "return $input.all().map((item) => ({ json: { ...item.json, delivery: item.json.telegram_status } }));"
+      },
+      "id": "1d01faf0-bbd0-41da-8cee-8dbcb3fdd244",
+      "name": "Digest ready for review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        340,
+        180
+      ],
+      "notesInFlow": true,
+      "notes": "Normal default endpoint. Open this node's output to copy the digest."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run manually": {
+      "main": [
+        [
+          {
+            "node": "Refresh newsroom research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "06:30 Asia Kolkata": {
+      "main": [
+        [
+          {
+            "node": "Refresh newsroom research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Refresh newsroom research": {
+      "main": [
+        [
+          {
+            "node": "Format neutral top 8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format neutral top 8": {
+      "main": [
+        [
+          {
+            "node": "Telegram explicitly enabled?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram explicitly enabled?": {
+      "main": [
+        [
+          {
+            "node": "Split for Telegram limit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Digest ready for review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split for Telegram limit": {
+      "main": [
+        [
+          {
+            "node": "Optional Telegram delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Kolkata",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": true
+  },
+  "versionId": "234a2bc7-5ea3-43f7-b06d-3c4a67c6217e",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

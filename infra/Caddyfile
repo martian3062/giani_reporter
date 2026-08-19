@@ -1,0 +1,55 @@
+{
+	admin off
+}
+
+{$NEWSROOM_SITE} {
+	encode zstd gzip
+
+	# Instagram fetches post media from its own servers with no credentials, so
+	# the media route cannot sit behind basic auth. Its own forty character
+	# per-asset token is the capability; every other path stays gated.
+	@desk not path /api/public/media/*
+
+	basic_auth @desk {
+		{$NEWSROOM_BASIC_AUTH_USER} {$NEWSROOM_BASIC_AUTH_HASH}
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy newsroom:8000
+	}
+
+	handle {
+		reverse_proxy web:8080
+	}
+}
+
+{$N8N_SITE} {
+	encode zstd gzip
+
+	# This gate protects a fresh n8n instance before its owner account exists.
+	# n8n user management remains enabled behind it as a second layer.
+	basic_auth {
+		{$N8N_GATE_USER} {$N8N_GATE_HASH}
+	}
+
+	header {
+		-Server
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy n8n:5678 {
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

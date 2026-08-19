@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+.venv/
+*.py[cod]
+data/
+assets/voice/
+assets/renders/
+assets/publish-packages/
+assets/posts/
+
+# Temporary roots left behind when a test run is interrupted
+tests/.runtime-*/

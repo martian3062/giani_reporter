@@ -1,0 +1,22 @@
+FROM python:3.11-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONPATH=/opt/newsroom-api/src
+
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin newsroom
+
+WORKDIR /opt/newsroom-api
+COPY apps/api/pyproject.toml apps/api/README.md ./
+COPY apps/api/src/ ./src/
+RUN python -m pip install .
+
+RUN mkdir -p /data/media /source-assets \
+    && chown -R newsroom:newsroom /opt/newsroom-api /data /source-assets
+
+USER newsroom
+EXPOSE 8000
+
+CMD ["uvicorn", "newsroom_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]

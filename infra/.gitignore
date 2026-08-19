@@ -1,0 +1,4 @@
+.env
+.env.*
+!.env.example
+kaggle/.ipynb_checkpoints/

@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "Mira",
+  "title": "AI Desk",
+  "is_fictional": true,
+  "disclosure": "Mira is an AI-generated fictional presenter identity and is not a real person.",
+  "sign_off": "Stay curious. Verify everything. See you tomorrow.",
+  "canonical_assets": {
+    "vertical": "mira-anchor-vertical.png",
+    "horizontal": "mira-anchor-horizontal.png"
+  },
+  "generation": {
+    "tool": "OpenAI built-in image generation",
+    "vertical_generation_id": "call_kAbSWX6ZTNbUEnNyphu2rwMK",
+    "horizontal_generation_id": "call_WRcT7hUAJCnSAIUjBC7NGj8f",
+    "seed": null,
+    "seed_note": "The built-in generator did not expose a numeric seed. Preserve these source images as the identity reference for all later variants.",
+    "vertical_prompt": "Create a polished, photorealistic studio portrait of Mira, a fictional 31-year-old South Asian woman news presenter. Use a restrained dark blue-grey broadcast studio, neutral friendly expression, closed mouth, direct eye contact, natural skin texture, a deep-navy blazer and warm-white top, centered vertical framing, soft front-left key light, and a subtle cool rim light. No hands, glasses, credentials, text, logo, or watermark.",
+    "horizontal_prompt": "Reframe the canonical Mira portrait in a horizontal 16:9 medium close-up. Preserve exact facial identity, age, skin tone, hair, outfit, expression, direct eye contact, lighting, and color treatment. Extend only the restrained dark blue-grey studio background. No text, logo, or watermark."
+  },
+  "voice_profile": {
+    "provider": "elevenlabs",
+    "profile_name": "Mira-Broadcast",
+    "publish_model": "eleven_multilingual_v2",
+    "draft_model": "eleven_flash_v2_5",
+    "stability": 0.55,
+    "similarity_boost": 0.8,
+    "style": 0.1,
+    "use_speaker_boost": true,
+    "voice_id": null
+  },
+  "brand": {
+    "base": "#080D17",
+    "surface": "#111B2B",
+    "paper": "#F4F0E8",
+    "accent": "#FF6246",
+    "data": "#8EB7FF"
+  }
+}

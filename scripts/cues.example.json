@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "lower_third": {
+    "name": "Mira",
+    "title": "AI Desk",
+    "date": "2026-07-27",
+    "start_seconds": 3,
+    "end_seconds": 10
+  },
+  "end_card": {
+    "text": "Full breakdown Saturday  •  Subscribe",
+    "duration_seconds": 5
+  },
+  "cues": [],
+  "cue_template": {
+    "label": "Story 1 coverage",
+    "start_seconds": 12,
+    "end_seconds": 17,
+    "file": "../assets/broll/clips/03-code-scroll-vertical.mp4",
+    "fit": "cover"
+  }
+}

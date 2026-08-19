@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+playwright-report/
+test-results/
+.runtime/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+kaggle.json
+
+# Runtime data and generated media
+data/*.db
+data/*.db-*
+data/exports/
+data/media/
+data/render-jobs/
+output/
+tmp/
+infra/n8n_data/
+
+# Large source media stays local or in object storage
+assets/broll/*.mp4
+assets/broll/*.mov
+assets/anchor/*.mp4
+*.wav
+*.mp3
+*.srt
+
+# Generated post slides carry public fetch tokens; they never enter Git
+apps/api/assets/posts/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

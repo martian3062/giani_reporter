@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "library": "Giani reusable B-roll",
+  "generated_media_committed": false,
+  "clip_directory": "assets/broll/clips",
+  "expected_spec": {
+    "container": "mp4",
+    "video_codec": "h264",
+    "pixel_format": "yuv420p",
+    "fps": 25,
+    "duration_seconds": 8,
+    "audio": "none",
+    "color_space": "bt709",
+    "variants": {
+      "vertical": {
+        "width": 1080,
+        "height": 1920,
+        "aspect_ratio": "9:16",
+        "filename_pattern": "{id}-{slug}-vertical.mp4"
+      },
+      "horizontal": {
+        "width": 1920,
+        "height": 1080,
+        "aspect_ratio": "16:9",
+        "filename_pattern": "{id}-{slug}-horizontal.mp4"
+      }
+    },
+    "quality_notes": [
+      "No logos, watermarks, legible private data, or recognizable copyrighted UI.",
+      "Avoid faces as the primary subject; these clips are reusable illustrative coverage.",
+      "Leave the center and lower third visually calm enough for captions and overlays.",
+      "Review every generated clip before adding it to the library."
+    ]
+  },
+  "clips": [
+    {
+      "id": "01",
+      "slug": "cold-open",
+      "label": "Cold open",
+      "prompt": "Slow push-in through a dark server room, blue LED racks, volumetric haze, cinematic",
+      "tags": [
+        "hook",
+        "infrastructure",
+        "opening"
+      ]
+    },
+    {
+      "id": "02",
+      "slug": "data-flow",
+      "label": "Data flow",
+      "prompt": "Abstract streams of light data flowing left to right, dark background, macro, slow",
+      "tags": [
+        "data",
+        "models",
+        "transition"
+      ]
+    },
+    {
+      "id": "03",
+      "slug": "code-scroll",
+      "label": "Code scroll",
+      "prompt": "Over-shoulder shot of code scrolling on a monitor, shallow depth of field, dark room",
+      "tags": [
+        "developers",
+        "code",
+        "tooling"
+      ]
+    },
+    {
+      "id": "04",
+      "slug": "chip-macro",
+      "label": "Chip macro",
+      "prompt": "Extreme macro of a computer chip, slow rotation, cool lighting, dust particles",
+      "tags": [
+        "gpu",
+        "hardware",
+        "semiconductors"
+      ]
+    },
+    {
+      "id": "05",
+      "slug": "city-tech",
+      "label": "City tech",
+      "prompt": "Aerial drone shot over a city skyline at dusk, lights turning on, slow pan",
+      "tags": [
+        "economy",
+        "scale",
+        "society"
+      ]
+    },
+    {
+      "id": "06",
+      "slug": "robot-arm",
+      "label": "Robot arm",
+      "prompt": "Industrial robotic arm moving precisely in a clean white lab, side angle",
+      "tags": [
+        "robotics",
+        "automation",
+        "industry"
+      ]
+    },
+    {
+      "id": "07",
+      "slug": "neural-net",
+      "label": "Neural net",
+      "prompt": "Abstract 3D neural network nodes pulsing and connecting, dark navy background",
+      "tags": [
+        "models",
+        "research",
+        "architecture"
+      ]
+    },
+    {
+      "id": "08",
+      "slug": "office",
+      "label": "Office",
+      "prompt": "Modern open-plan tech office, people out of focus walking past, slow dolly",
+      "tags": [
+        "company",
+        "work",
+        "business"
+      ]
+    },
+    {
+      "id": "09",
+      "slug": "phone",
+      "label": "Phone",
+      "prompt": "Close-up of hands using a smartphone, screen glow on face, dark room",
+      "tags": [
+        "consumer",
+        "apps",
+        "mobile"
+      ]
+    },
+    {
+      "id": "10",
+      "slug": "chart-up",
+      "label": "Chart up",
+      "prompt": "Abstract 3D bar chart rising, glowing edges, dark background, slow camera orbit",
+      "tags": [
+        "growth",
+        "funding",
+        "benchmark"
+      ]
+    },
+    {
+      "id": "11",
+      "slug": "chart-down",
+      "label": "Chart down",
+      "prompt": "Abstract 3D line graph declining sharply, red glow, dark background",
+      "tags": [
+        "decline",
+        "risk",
+        "benchmark"
+      ]
+    },
+    {
+      "id": "12",
+      "slug": "datacenter-exterior",
+      "label": "Datacenter exterior",
+      "prompt": "Exterior of a large datacenter building at dawn, cooling vapor, wide shot",
+      "tags": [
+        "compute",
+        "energy",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "13",
+      "slug": "lab",
+      "label": "Lab",
+      "prompt": "Scientists at workstations in a research lab, blue monitor glow, slow pan",
+      "tags": [
+        "research",
+        "science",
+        "team"
+      ]
+    },
+    {
+      "id": "14",
+      "slug": "transition",
+      "label": "Transition",
+      "prompt": "Abstract light sweep transition, blue to white, fast, motion blur",
+      "tags": [
+        "transition",
+        "wipe",
+        "separator"
+      ]
+    },
+    {
+      "id": "15",
+      "slug": "outro",
+      "label": "Outro",
+      "prompt": "Slow pull-back from a glowing screen into darkness, cinematic, fade",
+      "tags": [
+        "outro",
+        "ending",
+        "cta"
+      ]
+    }
+  ]
+}

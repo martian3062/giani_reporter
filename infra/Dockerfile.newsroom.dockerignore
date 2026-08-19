@@ -1,0 +1,7 @@
+**
+!apps/
+!apps/api/
+!apps/api/pyproject.toml
+!apps/api/README.md
+!apps/api/src/
+!apps/api/src/**
