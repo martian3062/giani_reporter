@@ -1,11 +1,5 @@
 # Giani AI News Anchor
 
-**Documentation updated:** 3 October 2026 · **Code/status baseline:** supplied README dated 2 October 2026 · **Timezone:** Asia/Kolkata.
-
-> This update describes the existing project from the supplied README and adds an explicitly proposed upgrade path. The repository source, running services, account permissions and test suite were not supplied or executed in this review. Reported test counts remain historical. No new application feature, deployment, provider connection or publish action is claimed complete.
->
-> Full implementation detail: [advanced plan](docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md). Evidence and unresolved checks: [source audit](docs/VERIFIED_SOURCES_2026-10-03.md). The [unchanged original README](docs/BASELINE_README_2026-10-02.md) preserves the setup history and original wording.
-
 Giani is a human-in-the-loop newsroom for producing a daily AI news briefing
 and a weekly deep dive with the fictional anchor **Mira**. It combines a
 React editorial desk, a FastAPI workflow API, live-source research,
@@ -45,12 +39,12 @@ The implementation follows the specifications in this repository:
   review to a confirmed Instagram publish, with five interchangeable image
   providers and eleven publish gates.
 
-## Current status (reported on 2 October 2026)
+## Current status (2 October 2026)
 
 | Area | State |
 |---|---|
-| Code | The baseline reports completed implementation, 77 backend tests and 11 frontend tests passing, and a clean TypeScript build. Not independently rerun for this documentation update. |
-| Instagram account | Baseline reports `@gianireporter.ai` connected through Instagram Login as a Creator account; status returned 0/100 at that check. Treat this as an account snapshot, not a universal quota or a current live check. |
+| Code | Complete. 77 backend tests and 11 frontend tests pass; the TypeScript build is clean. |
+| Instagram account | Connected to `@gianireporter.ai` (Creator account) through Instagram Login. Daily API quota: 100 posts. |
 | Publishing switch | Off (`INSTAGRAM_PUBLISH_ENABLED=false`) until the first reviewed test post. |
 | Public media URL | Needs one live tunnel address in `NEWSROOM_PUBLIC_BASE_URL`. |
 | Image generation | No provider key yet. Upload your own photo for real posts. |
@@ -59,122 +53,7 @@ The implementation follows the specifications in this repository:
 The setup history, next steps and deadlines are in
 [Instagram publishing: setup log and next steps](#instagram-publishing-setup-log-and-next-steps).
 
-## October 2026 upgrade plan — proposed, not implemented
-
-The recommended direction is an **evidence-first newsroom with reusable, claim-linked media**, not a fully autonomous social-posting agent. Keep Signal Desk, Mira, Post Studio, the human editorial angle, all eleven existing publishing checks, and the distinction between manual news-video upload and confirmed Instagram publishing.
-
-### What to implement first
-
-| Priority | Addition | Concrete outcome | Implementation status |
-|---|---|---|---|
-| P0 | Safe first publish and deployment preflight | A real reviewed image reaches the intended account; private routes remain private | Required next work; not completed by this documentation update |
-| P0 | Persisted publish attempts and unknown-outcome reconciliation | A timeout cannot trigger an automatic second post | Proposed hardening of the existing database-backed guard |
-| P1 | Claim Ledger and Evidence Desk | Every factual sentence points to reviewed evidence, including numbers, dates and qualifications | Proposed |
-| P1 | Release/event memory | Separate paper publication, announcement, API access, weights release, and third-party quantization | Proposed |
-| P1 | Source-change and correction tracking | Identify every script, slide, caption and audio segment affected by a changed claim | Proposed |
-| P2 | Template-first Post Studio | Render exact headlines and charts from validated data without requiring a generative-image key | Proposed; not the current offline placeholder path |
-| P2 | Shared StorySpec and incremental rendering | Reuse one approved evidence packet across separately reviewed formats; rebuild only affected artifacts | Proposed |
-| P3 | Voice adapters, pronunciation QA and language editions | Compare new speech models against the existing voice path without changing Mira silently | Proposed |
-| P3 | Media QA and provenance | Check real output, maintain creation/edit history and show synthetic-media disclosure | Proposed |
-| P4 | Durable workers, observability and evaluation | Recover interrupted jobs, measure cost per accepted output, and test factual/approval failures | Proposed |
-
-The detailed module contracts, test cases and six implementation phases are in [the advanced implementation plan](docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md). The packaged [example policy](examples/october_upgrade.proposed.json) is a design artifact: the current application does not consume it.
-
-### Proposed architecture
-
-```mermaid
-flowchart LR
-    Sources[Official announcements, papers, model cards, RSS and HN] --> Intake[Bounded source intake]
-    Intake --> Snapshots[Versioned source snapshots]
-    Snapshots --> Ledger[Claims, evidence and release events]
-    Ledger --> Desk[Signal Desk: human selection and angle]
-    Desk --> Spec[Versioned StorySpec]
-    Spec --> Drafts[Drafting and checking adapters]
-    Drafts --> Review[Human script review]
-    Review --> Compiler[Template and media compiler]
-    Compiler --> Assets[Immutable rendition assets]
-    Assets --> QA[Media QA and final human review]
-    QA --> Video[News-video package: manual upload]
-    QA --> Posts[Post Studio: dry run and typed confirmation]
-    Posts --> Publisher[Guarded Instagram publisher]
-    Ledger --> Corrections[Correction impact tracking]
-    Corrections --> Desk
-```
-
-This is a target design. It is not a claim that the new nodes exist in the supplied repository. A graph here describes data relationships; it does not require a graph database.
-
-### 1. Claim Ledger, not just a bibliography
-
-A proposed claim record binds a statement to source snapshot IDs, exact supporting spans, the source's role, its event date, and a reviewer decision. The system should distinguish `supported`, `partially_supported`, `contradicted`, and `unverified`; these are review states, not calibrated truth probabilities.
-
-For example, an official launch announcement supports **“the company announced model A”**. It does not independently prove **“model A is the best model”**. A benchmark claim needs its benchmark version, metric, evaluation conditions and attribution. Two sites reproducing the same release are not two independent confirmations.
-
-Build date, number, entity, unit and qualifier checks around the existing source gate. An LLM may propose evidence mappings; it cannot approve them. A missing source blocks a factual news assertion or routes it to explicit review, rather than being repaired with model memory.
-
-### 2. News memory and correction propagation
-
-Store `published_at`, `event_at`, `first_seen_at`, `fetched_at`, `timezone`, and `date_precision` separately. Unknown dates stay unknown. Record the distinction between announced, preview, generally available, weights available, and unavailable-to-this-account.
-
-Track dependencies as:
-
-```text
-source snapshot → claim revision → story revision → script/slide/caption → asset → publication
-```
-
-A source change creates a review task. It must not silently rewrite an already reviewed story. A material claim correction invalidates affected approvals and prepares replacement artifacts. Previously published media requires an editor-approved correction action; do not assume a social API can replace a published video's bytes.
-
-### 3. Template-first Post Studio and a shared StorySpec
-
-Use a structured content specification for headlines, bullets, approved numeric data, references, branding, disclosures, safe areas and language. Render final typography and factual charts with controlled HTML/SVG templates or another deterministic layout engine. Generated imagery is optional background artwork, never the authority for a benchmark chart or an event photograph.
-
-The current offline mode still creates unpublishable placeholders. The **proposed** template renderer is a separate real-media provider and must pass the same review and publishing gates as an uploaded photo.
-
-A reviewed evidence packet may prepare several outputs, but each caption, translation, crop and final rendered file needs its own approval. Keep the current daily three-story and deep-dive one-story policies. Do not relabel the 210–225-word daily profile as a 30-second video; calculate timing from the actual reviewed audio.
-
-### 4. Current model candidates to evaluate
-
-These are upstream options verified in documentation available on **3 October 2026**. They are not claimed to be installed, free to run, accessible through this account, or compatible with the current adapters without changes.
-
-| Task | Candidate | Date/access evidence | Suggested Giani use |
-|---|---|---|---|
-| Complex drafting/checking | `gpt-6.1-sol` | API release recorded 29 September 2026 [E01] | Optional bounded challenger for difficult evidence packets; no publish tools |
-| Economical extraction/routing | `gemini-3.5-flash-lite` | GA recorded 21 July 2026 [E03] | Candidate for source classification and schema extraction; benchmark first |
-| Precise image edits | `gpt-image-2.5-sunburst` | API release recorded 8 September 2026 [E01], [E02] | Reference-guided illustration edits with reapproval |
-| Image generation | `gpt-image-2.5-flare` | API release recorded 8 September 2026 [E01], [E02] | Optional visual backgrounds; measure cost and acceptance rate |
-| Google image adapters | `gemini-3.1-flash-image`, `gemini-3.1-flash-lite-image` | GA entries dated 28 May and 30 June 2026 [E03], [E04] | Compare reference fidelity versus simpler background generation |
-| Hosted speech | `gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts` | GA recorded 22 September 2026 [E03] | Voice-quality/cost challengers; explicitly review supported voices and language behavior |
-| Local speech generation/editing | AuK / AuK-Flash | Code/weights released 9 September; additional deployment updates followed in September [E05] | Test narration repair and generation in a separate worker |
-| Local English voice design | Qwen3-TTS 0.6B/1.7B families | Release recorded 22 January 2026 [E06] | Evaluate an original Mira voice and long-script consistency |
-| Hindi/Punjabi editions | IndicF5 | Model card explicitly includes Hindi and Punjabi [E07] | Optional language-specific worker; native-speaker review before use |
-| Existing lip-sync choices | LatentSync 1.6 and MuseTalk | Official repositories [E08], [E09] | Retain the hardware-gated path; no new avatar stack is required initially |
-
-Qwen3-TTS's listed ten languages do **not** include Hindi or Punjabi; do not advertise them through that adapter. IndicF5 lists MIT and Qwen3-TTS's repository lists Apache 2.0, while AuK lists MIT. Still review each pinned checkpoint, dependency and reference-voice right before deployment. [E05], [E06], [E07]
-
-Do not infer current API model IDs from a provider label such as “Imagen” or “OpenAI.” Keep a registry with checked model IDs, upstream dates, capabilities, permissions, license review, measured memory and Giani admission status. New IDs are opt-in. A fallback that changes pixels, voice or text produces a new asset revision and revokes approval.
-
-### 5. Production architecture without unnecessary services
-
-Keep the existing FastAPI/React modular application. SQLite remains the documented local baseline. Introduce PostgreSQL when multiple writers/workers or workspace isolation justify the migration; use explicit migrations and a restore rehearsal. Add relational claim/evidence tables before introducing vector search.
-
-Start retrieval with exact IDs and full-text search. Add pgvector only after measuring retrieval failures; its documented PostgreSQL integration supports vector search alongside relational data. It is not a replacement for evidence review. [E15]
-
-Use one persisted job/attempt system with leases and bounded retries. n8n remains a schedule/notification layer and never a second owner of approvals. LangGraph can be an optional drafting subworkflow with durable checkpoints and human interrupts, not the authority for publication. A resumed node may execute pre-interrupt code again, so side effects must be separately guarded. [E10], [E11]
-
-Retain R2/S3-compatible storage where useful. Keep private research, raw voice references and credentials separate from publishable final assets. A public bucket is public; use a dedicated final-media location or a scoped delivery gateway rather than exposing the whole asset store. [E19]
-
-### 6. Quality, provenance and operational evidence
-
-Add a redacted run trace, model/version record, actual provider usage, editor time, cache hits, render duration and retry outcomes. OpenTelemetry is a suitable tracing foundation; application-specific token/cost fields still need implementation. [E14]
-
-C2PA can document asset provenance and editing history. It does not establish factual accuracy. Maintain a source/disclosure page and sidecar manifest as well; do not assume a platform retains embedded credentials after transcoding. The cited specification is an explicit versioned reference, not a claim that 2.3 is the newest version. [E12]
-
-For optional React-based video composition, evaluate Remotion only after checking its organizational license. Its current terms distinguish up-to-three-person use from organizations/collaborations of four or more. Keep the existing FFmpeg engine as the default assembly path. [E13]
-
-The release gate should include unsupported-number detection, stale approvals, prompt injection in sources, duplicate publish requests, ambiguous platform timeouts, source corrections, language QA and real-media validation. The packaged [test scenarios](evals/editorial_cases.proposed.jsonl) are proposed fixtures, **not tests that have passed**.
-
 ## Architecture
-
-The following six flows describe the **existing implementation as reported in the baseline**, rather than the proposed additions above.
 
 ```text
 RSS + Hacker News ──> FastAPI + SQLite ──> React Signal Desk
@@ -217,8 +96,6 @@ prompt ──> creative direction ──> image generation ──> Instagram-exa
 Publishing is disabled by default, refuses placeholder images outright, refuses
 any revision the reviewer did not see, and cannot post the same revision twice.
 Full setup is in [Instagram-Post-Pipeline.md](Instagram-Post-Pipeline.md).
-
-**Hardening requirement:** the baseline's local duplicate-revision guard is not proof of exactly-once behavior across a remote platform. Persist the provider container/media IDs and introduce an `UNKNOWN_OUTCOME` state before enabling automated retries after a publish timeout. Reconcile ambiguous outcomes instead of blindly creating a second post.
 
 ## End-to-end architecture flows
 
@@ -486,7 +363,7 @@ $env:ELEVENLABS_VOICE_ID = '...'
 
 # Post Studio image generation. Set one; auto picks the first configured.
 $env:GOOGLE_API_KEY = '...'       # Gemini image and Imagen
-$env:OPENAI_API_KEY = '...'       # baseline adapter names gpt-image-1; newer models need admission
+$env:OPENAI_API_KEY = '...'       # gpt-image-1
 $env:STABILITY_API_KEY = '...'    # Stable Image Core
 $env:REPLICATE_API_TOKEN = '...'  # FLUX and others
 
@@ -537,8 +414,6 @@ without publishing anything.
 
 ### Lessons from the Meta setup
 
-Historical setup notes from the supplied README follow. Meta's current documentation returned rate-limit/fetch errors during this review; the exact current dashboard paths, permissions, token behavior and Graph-version retirement dates were not independently reverified. Use the actual account's diagnostics before relying on these historical instructions.
-
 - **Tester invitations do not appear as Instagram notifications.** While the
   Meta app is in Development mode, the Instagram account must accept a tester
   invitation. In the Instagram app, open **Profile → ☰ → Settings and activity
@@ -552,7 +427,7 @@ Historical setup notes from the supplied README follow. Meta's current documenta
   Instagram login → Generate access tokens → Add account**. Choose the account,
   approve the permissions and generate the token. Copy the token and the
   Instagram user ID shown next to it.
-- **The baseline records a dashboard-generated token with a 60-day lifetime** and can be used
+- **A token generated in the dashboard lasts 60 days** and can be used
   directly. `POST /api/instagram/exchange-token` is only for short-lived tokens
   and requires `META_APP_SECRET`.
 - **Keep tokens out of chats, issues and commits.** Store them only in the
@@ -581,8 +456,6 @@ and restart the API.
 
 ### Runbook: first test post
 
-**Only Post Studio may publish, after a human reviews the final asset and explicitly confirms it.** This runbook does not execute a publish or enable one automatically.
-
 1. Start the API in a fresh PowerShell window:
 
    ```powershell
@@ -592,52 +465,42 @@ and restart the API.
    uv run uvicorn newsroom_api.main:app --host 127.0.0.1 --port 8000 --env-file ..\..\infra\.env
    ```
 
-2. Expose **only the existing media-capability route**, not the raw API, through a local public tunnel. With Caddy installed and the packaged example copied to `examples/Caddyfile.media-only`, run from the repository root:
+2. In a second window, open a public tunnel to the API:
 
    ```powershell
-   caddy validate --config .\examples\Caddyfile.media-only --adapter caddyfile
-   caddy run --config .\examples\Caddyfile.media-only --adapter caddyfile
+   cloudflared tunnel --url http://127.0.0.1:8000
    ```
 
-   In another window:
+3. Copy the `https://….trycloudflare.com` address into
+   `NEWSROOM_PUBLIC_BASE_URL` in `infra/.env`, then restart the API.
+4. Open `https://<tunnel-address>/api/health` in a browser. Then confirm the
+   account and quota:
 
    ```powershell
-   cloudflared tunnel --url http://127.0.0.1:8090
-   ```
-
-   The example proxy only passes `/api/public/media/*` to port 8000 and returns 404 elsewhere. It is a proposed, unexecuted local configuration, not a production authentication system. Validate the existing per-asset token checks and reject invalid tokens before exposing the route. Keep the desk on localhost. For a remote desk, use authenticated production ingress instead. [E18]
-
-3. Copy exactly one HTTPS tunnel address to `NEWSROOM_PUBLIC_BASE_URL` in the untracked environment file and restart the API. A changing tunnel URL requires the same update. Do not use this temporary address as the long-term production host.
-4. From outside localhost, confirm a current valid media URL returns only its intended bytes; invalid/stale tokens and unrelated paths such as `/api/instagram/status`, `/docs` and `/api/health` must not expose the application. Test URL-encoding/path variants as part of the ingress audit. Redact capability tokens from logs.
-5. Check configuration locally:
-
-   ```powershell
-   Invoke-RestMethod http://127.0.0.1:8000/api/capabilities
    Invoke-RestMethod http://127.0.0.1:8000/api/instagram/status
    ```
 
-6. Start Signal Desk, open Posts, select square format and upload a photo whose rights you hold. This tests the existing real-media path without introducing an image-provider dependency. The proposed template provider is not yet implemented.
-7. Review every asset and its metadata, clear the eleven checks, approve the exact revision and run the dry run. Resolve all reported blockers. Confirm the destination account in the review screen.
-8. Enable `INSTAGRAM_PUBLISH_ENABLED=true` only for this reviewed test, restart the API, and use the existing typed `PUBLISH` confirmation. Record the returned platform result and inspect the actual post. Restore the switch to `false` afterward.
-9. When the remote outcome is ambiguous, stop and reconcile the account/provider state. Do not repeat the action merely because the local response timed out.
+5. Start the desk as described in [Quick start](#quick-start) and open
+   **Posts**.
+6. Write a prompt, choose **square**, and upload your own photo. Uploaded
+   photos count as real media; generated placeholders never pass the gate.
+7. Clear the eleven checks, approve the revision and run the dry run. It must
+   report ready.
+8. Set `INSTAGRAM_PUBLISH_ENABLED=true`, restart the API, and type `PUBLISH`.
+   Afterwards, set it back to `false`.
 
 ### Remaining work and deadlines
 
-| Item | Required action | Evidence/status |
+| Item | Needed for | When |
 |---|---|---|
-| Public media and real image | Validate media-only HTTPS delivery and an owned uploaded photo | Outstanding in the baseline |
-| First real publish | Perform the reviewed runbook; preserve the external media ID/result | Not performed in this review |
-| Access-token expiry | Inspect actual expiry; refresh or reconnect using the documented account route | The historical estimate was around 18 October 2026 from 19 August; token rotation could change it |
-| Graph API version | Read the configured `INSTAGRAM_GRAPH_VERSION`, verify its official support window, test a supported migration | Baseline mentions `v21.0` and 21 January 2027; that retirement date is **unverified here**, not an operational promise |
-| Format/account support | Validate each media type, login route, permission and current account capability | A format choice in the UI does not establish API publish eligibility |
-| Production deployment | Set Caddy/n8n secrets, configure persistent storage and test a restore | Not started according to baseline |
-| New model adapters | Pin exact API/model revisions, evaluate output, document rights and cost | Proposed only |
-
-Do not hard-code “100 posts per day,” a permanent token lifetime or a retirement deadline from a README snapshot. Read the applicable account/API response and authoritative version documentation. No credential was inspected or refreshed during this update.
+| Live tunnel URL in `NEWSROOM_PUBLIC_BASE_URL` | Any publish | Before the first post |
+| Real media: an uploaded photo or an image-provider key | Any publish | Before the first post |
+| Refresh the access token with `POST /api/instagram/refresh-token`, then update `infra/.env` | Keeping account access | Before about 18 October 2026 (60 days from 19 August) |
+| Raise `INSTAGRAM_GRAPH_VERSION` above `v21.0` | Graph API v21.0 is removed on 21 January 2027 | Before 21 January 2027 |
+| Caddy and n8n secrets in `infra/.env`; S3 or R2 media host | Production deployment | When deploying |
+| `META_APP_ID` and `META_APP_SECRET` | Token exchange and debugging only | Optional |
 
 ## Test and build
-
-These are the baseline commands, not evidence that tests were rerun for this update. New workflow and integration tests must be added alongside the existing suite; see the proposed evaluation pack.
 
 Backend:
 
@@ -691,46 +554,3 @@ post_pipeline.py  Stage orchestration and the publish sequence
 
 Generated databases, credentials, audio, videos, render manifests, and local
 environment files are excluded from version control.
-
-
-## Documentation package and implementation boundaries
-
-```text
-README.md                                      Updated project README
-START_HERE.md                                  Package use and audit scope
-docs/BASELINE_README_2026-10-02.md               Exact original, preserved
-docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md Proposed modules, phases and acceptance tests
-docs/VERIFIED_SOURCES_2026-10-03.md             External evidence and unresolved claims
-examples/Caddyfile.media-only                  Unexecuted media-only local proxy example
-examples/october_upgrade.proposed.json         Inert proposed policy/model registry
-examples/storyspec.synthetic.json              Fictional design fixture, not news
-evals/editorial_cases.proposed.jsonl            Proposed cases, not completed test results
-evals/README.md                                Evaluation procedure and limitations
-```
-
-Files in `examples/` are not wired into the application. Proposed route names, tables and modules in the implementation plan are not assertions about existing source code. Existing relative links to build plans, infrastructure and scripts refer to the original repository, which is not bundled here.
-
-## External reference keys
-
-These sources support upstream capability statements, not claims that the integrations are implemented in Giani. See the [source audit](docs/VERIFIED_SOURCES_2026-10-03.md) for dates, boundaries and unresolved checks.
-
-[E01]: https://developers.openai.com/api/docs/changelog "OpenAI API changelog"
-[E02]: https://developers.openai.com/api/docs/guides/image-generation "OpenAI image-generation guide"
-[E03]: https://ai.google.dev/gemini-api/docs/changelog "Gemini API release notes"
-[E04]: https://ai.google.dev/gemini-api/docs/image-generation "Gemini image-generation guide"
-[E05]: https://github.com/Tencent-Hunyuan/AuK "Tencent Hunyuan AuK repository"
-[E06]: https://github.com/QwenLM/Qwen3-TTS "Qwen3-TTS repository"
-[E07]: https://huggingface.co/ai4bharat/IndicF5 "AI4Bharat IndicF5 model card"
-[E08]: https://github.com/bytedance/LatentSync "LatentSync official repository"
-[E09]: https://github.com/TMElyralab/MuseTalk "MuseTalk official repository"
-[E10]: https://docs.langchain.com/oss/python/langgraph/persistence "LangGraph persistence"
-[E11]: https://docs.langchain.com/oss/python/langgraph/interrupts "LangGraph interrupts"
-[E12]: https://spec.c2pa.org/specifications/specifications/2.3/specs/C2PA_Specification.html "C2PA specification 2.3, explicitly versioned reference"
-[E13]: https://www.remotion.dev/docs/license/pricing "Remotion license and pricing"
-[E14]: https://opentelemetry.io/docs/languages/python/ "OpenTelemetry Python documentation"
-[E15]: https://github.com/pgvector/pgvector "pgvector official repository"
-[E16]: https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html "OWASP prompt-injection prevention"
-[E17]: https://docling-project.github.io/docling/ "Docling documentation"
-[E18]: https://caddyserver.com/docs/caddyfile/directives/handle "Caddy handle directive"
-[E19]: https://developers.cloudflare.com/r2/buckets/public-buckets/ "Cloudflare R2 public-bucket guidance"
-[E20]: https://github.com/SYSTRAN/faster-whisper "faster-whisper official repository"
