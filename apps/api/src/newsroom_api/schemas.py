@@ -21,7 +21,15 @@ PostFormat = Literal[
 PostStatus = Literal[
     "planning", "generating", "review", "approved", "publishing", "published"
 ]
-PublicationStatus = Literal["pending", "creating", "publishing", "published", "failed"]
+PublicationStatus = Literal[
+    "pending",
+    "creating",
+    "publishing",
+    "submitted",
+    "unknown_outcome",
+    "published",
+    "failed",
+]
 ImageProvider = Literal[
     "auto", "gemini", "imagen", "openai", "stability", "replicate", "offline"
 ]
@@ -250,6 +258,7 @@ class Publication(BaseModel):
     permalink: str
     ig_user_id: str
     error: str
+    manifest_sha256: str = ""
     created_at: str
     updated_at: str
 
@@ -338,6 +347,17 @@ class PublishRequest(BaseModel):
 
     confirm: Literal[True]
     expected_revision: int = Field(ge=1)
+    # The destination the reviewer saw in the dry run. A changed account
+    # configuration between preview and publish refuses the publish.
+    expected_account_id: str = Field(min_length=1, max_length=64)
+
+
+class ReconcileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: Literal["check", "confirm_published", "confirm_not_published"]
+    media_id: str = Field(default="", max_length=64)
+    confirmation: str = Field(default="", max_length=32)
 
 
 class PostChecksReport(BaseModel):
@@ -363,3 +383,12 @@ class PublishPreview(BaseModel):
     ready: bool
     quota: dict[str, Any] = Field(default_factory=dict)
     account: dict[str, Any] = Field(default_factory=dict)
+    destination_account_id: str = ""
+
+
+class ReconcileResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    outcome: Literal["published", "not_published", "unresolved"]
+    detail: str
+    post: Post

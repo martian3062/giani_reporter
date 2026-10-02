@@ -26,10 +26,24 @@ from .config import Settings
 
 
 class InstagramError(RuntimeError):
-    """Raised when Instagram rejects a request or a container never finishes."""
+    """Raised when Instagram rejects a request or a container never finishes.
+
+    ``ambiguous`` is True when the request may have reached Instagram but no
+    trustworthy answer came back: a read timeout, a dropped connection, a 5xx,
+    or a success response without the expected body. For a write such as
+    ``media_publish`` that means the post may be live, so the caller must
+    reconcile instead of retrying.
+    """
+
+    def __init__(self, message: str, *, ambiguous: bool = False) -> None:
+        super().__init__(message)
+        self.ambiguous = ambiguous
 
 
 TERMINAL_ERROR_STATES = {"ERROR", "EXPIRED"}
+
+# Requests that never left this machine cannot have changed anything remotely.
+_NOT_SENT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout)
 
 
 def appsecret_proof(access_token: str, app_secret: str) -> str:
@@ -93,16 +107,26 @@ class InstagramClient:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.request(method, url, params=query)
                 if response.status_code >= 400:
-                    raise InstagramError(_describe_error(response))
+                    raise InstagramError(
+                        _describe_error(response),
+                        ambiguous=response.status_code >= 500,
+                    )
                 body = response.json()
         except InstagramError:
             raise
-        except (httpx.HTTPError, ValueError) as exc:
+        except _NOT_SENT_ERRORS as exc:
             raise InstagramError(
                 f"Instagram request failed: {type(exc).__name__}"
             ) from exc
+        except (httpx.HTTPError, ValueError) as exc:
+            raise InstagramError(
+                f"Instagram request failed: {type(exc).__name__}",
+                ambiguous=True,
+            ) from exc
         if not isinstance(body, dict):
-            raise InstagramError("Instagram returned an invalid response")
+            raise InstagramError(
+                "Instagram returned an invalid response", ambiguous=True
+            )
         return body
 
     # --- account ----------------------------------------------------------
@@ -239,7 +263,10 @@ class InstagramClient:
         )
         media_id = body.get("id")
         if not isinstance(media_id, str) or not media_id:
-            raise InstagramError("Instagram returned no published media id")
+            # A success status without an id: the publish may have happened.
+            raise InstagramError(
+                "Instagram returned no published media id", ambiguous=True
+            )
         return media_id
 
     async def media_details(self, media_id: str) -> dict[str, Any]:
@@ -248,6 +275,29 @@ class InstagramClient:
             media_id,
             params={"fields": "id,permalink,media_type,timestamp"},
         )
+
+    # --- reconciliation (read-only) --------------------------------------
+
+    async def container_status(self, container_id: str) -> str:
+        """``FINISHED``, ``PUBLISHED``, ``IN_PROGRESS``, ``ERROR`` or ``EXPIRED``."""
+        body = await self._request(
+            "GET", container_id, params={"fields": "status_code"}
+        )
+        return str(body.get("status_code") or "UNKNOWN")
+
+    async def recent_media(self, limit: int = 25) -> list[dict[str, Any]]:
+        body = await self._request(
+            "GET",
+            f"{self._user_id}/media",
+            params={
+                "fields": "id,caption,permalink,timestamp",
+                "limit": str(max(1, min(limit, 50))),
+            },
+        )
+        rows = body.get("data")
+        if not isinstance(rows, list):
+            return []
+        return [row for row in rows if isinstance(row, dict)]
 
 
 async def _graph_get(

@@ -117,6 +117,9 @@ class Settings:
     instagram_daily_post_limit: int = 5
     instagram_poll_attempts: int = 30
     instagram_poll_interval_seconds: float = 3.0
+    # An automatic "not published" verdict waits this long after the
+    # ambiguous attempt, so a late-processing publish can surface first.
+    instagram_reconcile_settle_seconds: float = 60.0
 
     def __post_init__(self) -> None:
         self.api_root = self.api_root.resolve()
@@ -230,6 +233,9 @@ class Settings:
             instagram_poll_attempts=_env_int("INSTAGRAM_POLL_ATTEMPTS", 30),
             instagram_poll_interval_seconds=float(
                 os.getenv("INSTAGRAM_POLL_INTERVAL_SECONDS", "3")
+            ),
+            instagram_reconcile_settle_seconds=float(
+                os.getenv("INSTAGRAM_RECONCILE_SETTLE_SECONDS", "60")
             ),
         )
 

@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import ValidationError
 
+from . import delivery
 from .artifacts import ArtifactError, resolve_asset, sha256_file
 from .config import Settings
 from .database import DEMO_STORIES, Repository
@@ -46,9 +47,12 @@ from .instagram import (
 from .media_host import media_host_readiness
 from .post_pipeline import (
     PipelineError,
+    PublishOutcomeUnknown,
     generate_assets,
     preview_path,
+    publication_manifest_sha256,
     publish_to_instagram,
+    reconcile_publication,
     register_uploaded_asset,
 )
 from .posts import (
@@ -62,6 +66,7 @@ from .posts import (
 from .posts import approval_errors as post_approval_errors
 from .posts import publish_blockers as post_publish_blockers
 from .posts import slide_count
+from .public_media import serve_public_media
 from .providers import (
     ProviderError,
     create_anthropic_draft,
@@ -90,6 +95,8 @@ from .schemas import (
     PublishPackage,
     PublishPreview,
     PublishRequest,
+    ReconcileRequest,
+    ReconcileResult,
     RefreshResponse,
     RenderJob,
     ResearchRefreshRequest,
@@ -110,9 +117,26 @@ def utc_timestamp() -> str:
     )
 
 
+IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
+
+
 def today_ist() -> str:
-    ist = dt.timezone(dt.timedelta(hours=5, minutes=30))
-    return dt.datetime.now(ist).date().isoformat()
+    return dt.datetime.now(IST).date().isoformat()
+
+
+def ist_day_start_utc(now: dt.datetime | None = None) -> str:
+    """Midnight of the current Asia/Kolkata day, as a stored UTC timestamp.
+
+    Publication timestamps are UTC, so the daily cap must compare against
+    18:30Z of the previous UTC day, not against the IST date at 00:00Z.
+    """
+    current = (now or dt.datetime.now(dt.timezone.utc)).astimezone(IST)
+    midnight = current.replace(hour=0, minute=0, second=0, microsecond=0)
+    return (
+        midnight.astimezone(dt.timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _not_found(resource: str, resource_id: str) -> HTTPException:
@@ -1162,6 +1186,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     permalink=str(row["permalink"]),
                     ig_user_id=str(row["ig_user_id"]),
                     error=str(row["error"]),
+                    manifest_sha256=str(row.get("manifest_sha256") or ""),
                     created_at=str(row["created_at"]),
                     updated_at=str(row["updated_at"]),
                 )
@@ -1474,24 +1499,46 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         The forty character token in the filename is the capability. Tokens
         are minted per asset and replaced whenever slides are regenerated.
+        Only reviewed, non-placeholder media of the current revision is
+        served; see ``public_media.serve_public_media``.
         """
-        token, _, extension = filename.partition(".")
-        if extension not in {"jpg", "mp4"} or len(token) != 40:
-            raise _not_found("media", filename)
-        asset = repository.get_post_asset_by_token(token)
-        if asset is None:
-            raise _not_found("media", filename)
-        try:
-            path = resolve_asset(app_settings, str(asset["path"]))
-        except ArtifactError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"media is unavailable: {exc}",
-            ) from exc
-        return FileResponse(
-            path,
-            media_type=str(asset["mime"]),
-            headers={"Cache-Control": "public, max-age=300"},
+        return serve_public_media(app_settings, repository, filename)
+
+    def _public_media_urls(assets: list[dict[str, Any]]) -> list[str]:
+        urls: list[str] = []
+        for asset in assets:
+            extension = "mp4" if asset["kind"] == "video" else "jpg"
+            if app_settings.media_host == "local":
+                base = f"{app_settings.public_base_url}/api/public/media"
+            else:
+                base = (
+                    f"{app_settings.s3_public_base_url}/"
+                    f"{app_settings.s3_key_prefix.strip('/')}"
+                )
+            urls.append(f"{base}/{asset['public_token']}.{extension}")
+        return urls
+
+    def _unresolved_attempt_blocker(post_id: str) -> str:
+        if any(
+            row["status"] == "unknown_outcome"
+            for row in repository.list_publications(post_id)
+        ):
+            return (
+                "Instagram's answer to an earlier publish attempt was "
+                "ambiguous, so the post may already be live. Reconcile that "
+                "attempt before publishing again."
+            )
+        return ""
+
+    async def _delivery_blockers(
+        assets: list[dict[str, Any]], media_urls: list[str]
+    ) -> list[str]:
+        # S3 media is uploaded during the publish itself, so there is
+        # nothing at the public URL to probe before then.
+        if app_settings.media_host != "local":
+            return []
+        return await delivery.check_public_delivery(
+            app_settings, list(zip(media_urls, assets))
         )
 
     @api.get("/api/posts/{post_id}/checks", response_model=PostChecksReport)
@@ -1560,13 +1607,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         post = _refresh_checks(post_id)
         assets = repository.list_post_assets(post_id)
         blockers = post_publish_blockers(post, assets, app_settings)
+        unresolved = _unresolved_attempt_blocker(post_id)
+        if unresolved:
+            blockers.append(unresolved)
 
         host = media_host_readiness(app_settings)
         if not host["ready"]:
             blockers.append(str(host["detail"]))
 
         published_today = repository.count_publications_since(
-            f"{today_ist()}T00:00:00Z"
+            ist_day_start_utc()
         )
         if published_today >= app_settings.instagram_daily_post_limit:
             blockers.append(
@@ -1577,19 +1627,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         media_urls: list[str] = []
         if not blockers:
             try:
-                media_urls = [
-                    f"{app_settings.public_base_url}/api/public/media/"
-                    f"{asset['public_token']}."
-                    f"{'mp4' if asset['kind'] == 'video' else 'jpg'}"
-                    if app_settings.media_host == "local"
-                    else f"{app_settings.s3_public_base_url}/"
-                    f"{app_settings.s3_key_prefix.strip('/')}/"
-                    f"{asset['public_token']}."
-                    f"{'mp4' if asset['kind'] == 'video' else 'jpg'}"
-                    for asset in assets
-                ]
+                media_urls = _public_media_urls(assets)
             except (KeyError, TypeError):
                 media_urls = []
+            blockers.extend(await _delivery_blockers(assets, media_urls))
 
         diagnosis = await diagnose_instagram(app_settings)
         return PublishPreview(
@@ -1606,6 +1647,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ready=not blockers,
             quota=diagnosis.get("quota") or {},
             account=diagnosis.get("account") or {},
+            destination_account_id=app_settings.instagram_user_id.strip(),
         )
 
     @api.post("/api/posts/{post_id}/publish", response_model=Post)
@@ -1622,17 +1664,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "re-approve, and confirm again"
                 ),
             )
+        destination = app_settings.instagram_user_id.strip()
+        # With no account configured the blockers below already say so.
+        if destination and payload.expected_account_id.strip() != destination:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "the destination Instagram account changed since the dry "
+                    "run; run the dry run again and confirm the account"
+                ),
+            )
         blockers = post_publish_blockers(post, assets, app_settings)
+        unresolved = _unresolved_attempt_blocker(post_id)
+        if unresolved:
+            blockers.append(unresolved)
         host = media_host_readiness(app_settings)
         if not host["ready"]:
             blockers.append(str(host["detail"]))
         published_today = repository.count_publications_since(
-            f"{today_ist()}T00:00:00Z"
+            ist_day_start_utc()
         )
         if published_today >= app_settings.instagram_daily_post_limit:
             blockers.append(
                 f"the local daily cap of "
                 f"{app_settings.instagram_daily_post_limit} posts is reached"
+            )
+        if not blockers:
+            blockers.extend(
+                await _delivery_blockers(assets, _public_media_urls(assets))
             )
         if blockers:
             raise HTTPException(
@@ -1647,6 +1706,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "post_id": post_id,
                 "status": "pending",
                 "post_revision": int(post["revision"]),
+                "ig_user_id": destination,
+                "manifest_sha256": publication_manifest_sha256(
+                    post, assets, destination
+                ),
                 "created_at": timestamp,
                 "updated_at": timestamp,
             }
@@ -1668,12 +1731,55 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 str(publication["id"]),
                 utc_timestamp,
             )
+        except PublishOutcomeUnknown as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "message": str(exc),
+                    "outcome": "unknown",
+                    "publication_id": str(publication["id"]),
+                },
+            ) from exc
         except PipelineError as exc:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=str(exc),
             ) from exc
         return _serialize_post(_post_or_404(post_id))
+
+    @api.post(
+        "/api/posts/{post_id}/publications/{publication_id}/reconcile",
+        response_model=ReconcileResult,
+    )
+    async def reconcile_post_publication(
+        post_id: str, publication_id: str, payload: ReconcileRequest
+    ) -> ReconcileResult:
+        """Resolve an ambiguous publish attempt. This never publishes."""
+        post = _post_or_404(post_id)
+        publication = repository.get_publication(publication_id)
+        if publication is None or publication["post_id"] != post_id:
+            raise _not_found("publication", publication_id)
+        try:
+            result = await reconcile_publication(
+                app_settings,
+                repository,
+                post,
+                publication,
+                action=payload.action,
+                media_id=payload.media_id,
+                confirmation=payload.confirmation,
+                timestamp_factory=utc_timestamp,
+            )
+        except PipelineError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
+            ) from exc
+        return ReconcileResult(
+            outcome=result.outcome,
+            detail=result.detail,
+            post=_serialize_post(_post_or_404(post_id)),
+        )
 
     @api.get("/api/instagram/status")
     async def instagram_status() -> dict[str, Any]:
@@ -1682,7 +1788,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "media_host": media_host_readiness(app_settings),
             "daily_limit": app_settings.instagram_daily_post_limit,
             "published_today": repository.count_publications_since(
-                f"{today_ist()}T00:00:00Z"
+                ist_day_start_utc()
             ),
         }
 
