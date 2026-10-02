@@ -899,6 +899,23 @@ def test_media_host_readiness_requires_https(settings: Settings) -> None:
     assert media_host_readiness(settings)["ready"] is True
 
 
+@pytest.mark.parametrize(
+    "base",
+    [
+        # Two tunnel addresses pasted into one value.
+        "https://a.ngrok-free.devhttps://b.trycloudflare.com",
+        "https://",
+        "https://desk.example.com/?token=1",
+        "https://desk example.com",
+    ],
+)
+def test_media_host_readiness_rejects_a_malformed_address(
+    settings: Settings, base: str
+) -> None:
+    settings.public_base_url = base
+    assert media_host_readiness(settings)["ready"] is False
+
+
 def test_capabilities_reports_what_is_missing(client: TestClient) -> None:
     body = client.get("/api/capabilities").json()
     assert body["images"]["resolved_provider"] == "offline"

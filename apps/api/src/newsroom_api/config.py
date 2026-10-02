@@ -110,7 +110,7 @@ class Settings:
     meta_app_id: str = ""
     meta_app_secret: str = ""
     instagram_login_mode: str = "facebook"
-    instagram_graph_version: str = "v21.0"
+    instagram_graph_version: str = "v25.0"
     instagram_user_id: str = ""
     instagram_access_token: str = ""
     instagram_publish_enabled: bool = False
@@ -216,7 +216,7 @@ class Settings:
             .strip()
             .lower(),
             instagram_graph_version=os.getenv(
-                "INSTAGRAM_GRAPH_VERSION", "v21.0"
+                "INSTAGRAM_GRAPH_VERSION", "v25.0"
             ),
             instagram_user_id=_first_env("INSTAGRAM_USER_ID", "META_USER_ID"),
             instagram_access_token=_first_env(
