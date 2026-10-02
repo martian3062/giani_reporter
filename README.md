@@ -39,6 +39,20 @@ The implementation follows the specifications in this repository:
   review to a confirmed Instagram publish, with five interchangeable image
   providers and eleven publish gates.
 
+## Current status (2 October 2026)
+
+| Area | State |
+|---|---|
+| Code | Complete. 77 backend tests and 11 frontend tests pass; the TypeScript build is clean. |
+| Instagram account | Connected to `@gianireporter.ai` (Creator account) through Instagram Login. Daily API quota: 100 posts. |
+| Publishing switch | Off (`INSTAGRAM_PUBLISH_ENABLED=false`) until the first reviewed test post. |
+| Public media URL | Needs one live tunnel address in `NEWSROOM_PUBLIC_BASE_URL`. |
+| Image generation | No provider key yet. Upload your own photo for real posts. |
+| Production deployment | Not started. Compose needs the Caddy and n8n secrets. |
+
+The setup history, next steps and deadlines are in
+[Instagram publishing: setup log and next steps](#instagram-publishing-setup-log-and-next-steps).
+
 ## Architecture
 
 ```text
@@ -283,6 +297,11 @@ uv sync --extra dev
 uv run uvicorn newsroom_api.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+To load provider and Instagram settings from the Git-ignored `infra/.env`
+instead of typing `$env:` lines, add `--env-file ..\..\infra\.env`. Use a fresh
+PowerShell window: variables already set in the session take precedence over
+the file.
+
 Start the desk in a second PowerShell window:
 
 ```powershell
@@ -353,11 +372,12 @@ $env:REPLICATE_API_TOKEN = '...'  # FLUX and others
 $env:NEWSROOM_PUBLIC_BASE_URL = 'https://your-tunnel.example.com'
 
 # Meta / Instagram Content Publishing API
-$env:META_APP_ID = '...'              # from developers.facebook.com
-$env:META_APP_SECRET = '...'          # enables appsecret_proof + token exchange
-$env:INSTAGRAM_USER_ID = '...'        # IG Business account id
-$env:META_ACCESS_TOKEN = '...'        # long-lived token (INSTAGRAM_ACCESS_TOKEN also read)
-$env:INSTAGRAM_PUBLISH_ENABLED = 'true'
+$env:INSTAGRAM_LOGIN_MODE = 'instagram'   # Instagram Login; 'facebook' for the Page-linked route
+$env:INSTAGRAM_USER_ID = '...'            # Instagram user id shown next to the generated token
+$env:INSTAGRAM_ACCESS_TOKEN = '...'       # long-lived token (META_ACCESS_TOKEN also read)
+$env:META_APP_ID = '...'                  # optional: token debugging
+$env:META_APP_SECRET = '...'              # optional: appsecret_proof + token exchange
+$env:INSTAGRAM_PUBLISH_ENABLED = 'false'  # 'true' only for a reviewed publish
 ```
 
 Do not place secrets in `VITE_*` variables, source files, notebooks, workflow
@@ -369,6 +389,116 @@ that the publish gate always refuses.
 `GET /api/capabilities` reports exactly which providers resolved and what is
 still missing. `GET /api/instagram/status` checks the token, account, and quota
 without publishing anything.
+
+## Instagram publishing: setup log and next steps
+
+### Timeline
+
+- **27 July 2026:** Project started with the build plan, the free-stack plan
+  and the Post Studio specification.
+- **19 August 2026:** Full newsroom and Post Studio implementation committed,
+  with the architecture flows documented in this README.
+- **19 August 2026:** Meta app configured for the Instagram Login route, which
+  needs no Facebook Page. The `gianireporter.ai` account was added as an
+  Instagram Tester, the invitation was accepted, and a long-lived access token
+  was generated under **API setup with Instagram login**.
+- **17 September 2026:** Readiness audit. It found two operational issues:
+  another local application was using port 8000 (the smoke run used port
+  8099), and the production Compose stack cannot start until its Caddy and n8n
+  authentication variables are set.
+- **2 October 2026:** Re-verified. Port 8000 is free again and all tests pass.
+  A read-only `GET /api/instagram/status` confirmed that the token works, the
+  account is `gianireporter.ai` (`MEDIA_CREATOR`) and 0 of 100 daily posts are
+  used. Two items still block the first post: a live public media URL and real
+  media.
+
+### Lessons from the Meta setup
+
+- **Tester invitations do not appear as Instagram notifications.** While the
+  Meta app is in Development mode, the Instagram account must accept a tester
+  invitation. In the Instagram app, open **Profile → ☰ → Settings and activity
+  → Website permissions → Apps and websites → Tester invites**.
+- **If no invitation is waiting,** open **App roles → Testers** in the Meta
+  dashboard. The account must be listed with the **Instagram Tester** role, not
+  Administrator or Developer. If it shows as pending but never appears in
+  Instagram, remove it and invite it again while signed in to the correct
+  Instagram account.
+- **After accepting,** go to **Use cases → Instagram API → API setup with
+  Instagram login → Generate access tokens → Add account**. Choose the account,
+  approve the permissions and generate the token. Copy the token and the
+  Instagram user ID shown next to it.
+- **A token generated in the dashboard lasts 60 days** and can be used
+  directly. `POST /api/instagram/exchange-token` is only for short-lived tokens
+  and requires `META_APP_SECRET`.
+- **Keep tokens out of chats, issues and commits.** Store them only in the
+  Git-ignored `infra/.env`. If a token is ever exposed, generate a new one in
+  the Meta dashboard.
+
+### Local configuration
+
+These are the Instagram values in the Git-ignored `infra/.env` for local
+testing:
+
+```dotenv
+INSTAGRAM_LOGIN_MODE=instagram
+INSTAGRAM_USER_ID=<Instagram user id from the dashboard>
+INSTAGRAM_ACCESS_TOKEN=<long-lived token>
+INSTAGRAM_PUBLISH_ENABLED=false
+NEWSROOM_PUBLIC_BASE_URL=https://<one-tunnel-address>.trycloudflare.com
+# Optional; only needed for token exchange and token debugging.
+META_APP_ID=
+META_APP_SECRET=
+```
+
+`NEWSROOM_PUBLIC_BASE_URL` must contain exactly one URL. A quick Cloudflare
+tunnel gets a new address every time it restarts. Each time, update this value
+and restart the API.
+
+### Runbook: first test post
+
+1. Start the API in a fresh PowerShell window:
+
+   ```powershell
+   cd E:\giani_reporter\apps\api
+   $env:UV_PROJECT_ENVIRONMENT = 'E:\cache\venvs\giani_reporter'
+   $env:UV_CACHE_DIR = 'E:\cache\uv'
+   uv run uvicorn newsroom_api.main:app --host 127.0.0.1 --port 8000 --env-file ..\..\infra\.env
+   ```
+
+2. In a second window, open a public tunnel to the API:
+
+   ```powershell
+   cloudflared tunnel --url http://127.0.0.1:8000
+   ```
+
+3. Copy the `https://….trycloudflare.com` address into
+   `NEWSROOM_PUBLIC_BASE_URL` in `infra/.env`, then restart the API.
+4. Open `https://<tunnel-address>/api/health` in a browser. Then confirm the
+   account and quota:
+
+   ```powershell
+   Invoke-RestMethod http://127.0.0.1:8000/api/instagram/status
+   ```
+
+5. Start the desk as described in [Quick start](#quick-start) and open
+   **Posts**.
+6. Write a prompt, choose **square**, and upload your own photo. Uploaded
+   photos count as real media; generated placeholders never pass the gate.
+7. Clear the eleven checks, approve the revision and run the dry run. It must
+   report ready.
+8. Set `INSTAGRAM_PUBLISH_ENABLED=true`, restart the API, and type `PUBLISH`.
+   Afterwards, set it back to `false`.
+
+### Remaining work and deadlines
+
+| Item | Needed for | When |
+|---|---|---|
+| Live tunnel URL in `NEWSROOM_PUBLIC_BASE_URL` | Any publish | Before the first post |
+| Real media: an uploaded photo or an image-provider key | Any publish | Before the first post |
+| Refresh the access token with `POST /api/instagram/refresh-token`, then update `infra/.env` | Keeping account access | Before about 18 October 2026 (60 days from 19 August) |
+| Raise `INSTAGRAM_GRAPH_VERSION` above `v21.0` | Graph API v21.0 is removed on 21 January 2027 | Before 21 January 2027 |
+| Caddy and n8n secrets in `infra/.env`; S3 or R2 media host | Production deployment | When deploying |
+| `META_APP_ID` and `META_APP_SECRET` | Token exchange and debugging only | Optional |
 
 ## Test and build
 
