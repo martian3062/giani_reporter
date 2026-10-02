@@ -67,6 +67,8 @@ Official URLs attempted, provided for operator verification:
 
 Accordingly, **100** remains a value reported by the application's 2 October status snapshot, not a universal or perpetual daily quota. The historical estimate around **18 October 2026** does not replace a live token-expiry check. The original **21 January 2027** Graph v21.0 retirement statement is retained only in the archive/history qualification, not asserted as verified.
 
+**Update, 3 October 2026 (after implementation):** the Graph API version page (https://developers.facebook.com/docs/graph-api/changelog/versions) was retrieved successfully. It lists v21.0 as released 2 October 2024 and expiring **21 January 2027**, v25.0 as expiring **29 July 2028**, and v26.0 (released 29 July 2026) as TBD. The v21.0 date is therefore verified. The account's read-only status endpoint returned `quota_total` 100 over 86,400 seconds with 0 used; that is still an account snapshot. Token expiry remains unverified, because `debug_token` needs `META_APP_ID` and `META_APP_SECRET`, which are not configured. The Instagram Login content-publishing pages were not re-fetched.
+
 ### n8n scaling and FFmpeg filter details
 
 The attempted queue-mode documentation path did not return a usable current guide. No new queue-mode configuration is prescribed. n8n's current preparation-only role comes from B0. The attempted FFmpeg filters page was also unavailable; this package retains the source-reported assembly path without introducing unverifiable filter-version claims or production command flags.
@@ -79,11 +81,24 @@ Model-card or repository license labels are initial screening information. Inspe
 
 The three linked project specification files, actual Python/TypeScript source, dependency lockfiles, infrastructure configurations, account token and live services were not supplied. References to new tables/routes/configuration are proposals. The current source must be inspected before producing a migration or code patch.
 
+**Update, 3 October 2026:** the source was inspected and Phase 0 was implemented against it. Verified in the developer's environment that day:
+
+| Check | Result |
+|---|---|
+| Backend tests (`pytest`) | 113 passed: 77 existing, 36 new in `test_publish_safety.py` and `test_posts.py` |
+| Frontend tests (`vitest`) | 12 passed: 11 existing, 1 new |
+| TypeScript build and `npm run build` | Clean |
+| Local smoke run (real API on 8000, media gateway on 8090, existing database) | Both started. The gateway answered 404 to `/api/health`, `/docs`, `/openapi.json`, `/api/instagram/status` and an invalid media token. The delivery preflight flagged the API port as exposed and did not flag the gateway |
+| Read-only Instagram calls on v21.0 and v25.0 | Account, publishing limit and recent media all succeeded on both versions |
+| Publish | Not performed. `INSTAGRAM_PUBLISH_ENABLED` stayed `false`, and no credential was changed |
+
 ## Change record for the generated documentation
 
 The original README is preserved byte-for-byte. The replacement adds an audit-scope banner, proposed capabilities and target architecture, source-backed model candidates, explicit source-reported test/status language, a safer unexecuted media-only local-delivery example, and current verification caveats. It retains the existing editorial flows, commands, fictional-anchor identity and publishing boundaries.
 
 The implementation plan and evaluation pack add design requirements, not claims that implementation has finished. JSON parsing and documentation-integrity checks on the generated package are distinct from running Giani's backend, frontend, rendering or publishing tests.
+
+When this package was added to the repository on 3 October 2026, only the README draft, this audit and the implementation plan were present. The `START_HERE.md`, `examples/` and `evals/` files it describes were not included. The README no longer links to them. The planned `examples/Caddyfile.media-only` was replaced by the Python media gateway described in the README.
 
 ## Reference definitions
 

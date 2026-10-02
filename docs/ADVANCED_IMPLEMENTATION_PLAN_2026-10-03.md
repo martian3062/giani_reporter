@@ -1,8 +1,26 @@
 # Giani: advanced implementation plan
 
-**Planning date:** 3 October 2026. **Basis:** the supplied Giani README dated 2 October 2026. **State:** proposed work, not implemented or benchmarked in this review.
+**Planning date:** 3 October 2026. **Basis:** the supplied Giani README dated 2 October 2026. **State:** Phase 0 implemented on 3 October 2026; Phases 1–5 proposed.
 
-The original project is a human-in-the-loop newsroom with the fictional anchor Mira, a React Signal Desk, a FastAPI/SQLite workflow API, a private lip-sync handoff, deterministic FFmpeg assembly, and a separately guarded Instagram Post Studio. Preserve those names and boundaries. The existing source files and the three linked build specifications were not supplied; exact edits require inspecting them before coding.
+The original project is a human-in-the-loop newsroom with the fictional anchor Mira, a React Signal Desk, a FastAPI/SQLite workflow API, a private lip-sync handoff, deterministic FFmpeg assembly, and a separately guarded Instagram Post Studio. Preserve those names and boundaries. This plan was written without access to the source files and the three linked build specifications. The Phase 0 work below was done after inspecting them.
+
+## Implementation status (3 October 2026)
+
+Phase 0's code work is done on branch `feat/phase0-safe-publish`. The operator still has to perform the first real publish. Verification: 113 backend tests (77 existing, 36 new) and 12 frontend tests pass, the TypeScript and production builds are clean, and a local smoke run started the real API and gateway against the existing database.
+
+| Plan item | What was built | Where |
+|---|---|---|
+| §8 remote-outcome layer, state machine | `submitted` is recorded before `media_publish`. Timeouts, dropped connections, 5xx answers, a missing media id, or a restart after submission become `unknown_outcome`, which keeps the revision's slot and locks the post | `instagram.py`, `post_pipeline.py`, `database.py` |
+| §8 operator reconciliation | `POST /api/posts/{id}/publications/{pub}/reconcile` with `check` (container status: `PUBLISHED` vs `FINISHED`/`ERROR`/`EXPIRED`, after a settle window), `confirm_published` (verified media id) and `confirm_not_published` (typed `NOT PUBLISHED`). It never publishes. The desk has a matching panel | `post_pipeline.py`, `main.py`, `PostStudioPage.tsx` |
+| §1/§8 PUBLISH bound to the destination | The publish request must echo the dry run's `destination_account_id` | `schemas.py`, `main.py` |
+| §8 uniqueness key and payload record | Each attempt stores `manifest_sha256` over account, post, revision, format, caption, alt text and slide hashes. The existing partial unique index still allows one non-failed attempt per revision | `post_pipeline.py`, `database.py` |
+| §2 ingress concern, Phase 0 media-only delivery | `newsroom_api.media_gateway` serves only `/api/public/media/*`, with no docs or OpenAPI. A Python app was used instead of a Caddy proxy because Caddy is not installed locally | `media_gateway.py`, `public_media.py` |
+| §8 "restrict public delivery to reviewed assets" | Media is served only for non-placeholder assets of the current revision of an approved, publishing or published post | `public_media.py` |
+| §8 dry run detects expired URLs and wrong MIME | Each slide is fetched through the public address and checked for status, content type, file signature and size. A made-up token must return 404, and API routes reachable without authentication block the publish | `delivery.py` |
+| Phase 0 "verify token/permission/account state" | Read-only status checked against the real account. Graph default moved to `v25.0` after checking reads on v21.0 and v25.0. Malformed `NEWSROOM_PUBLIC_BASE_URL` values are now reported as not ready | `config.py`, `media_host.py` |
+| Found during implementation | The daily cap compared UTC timestamps with the IST date at 00:00Z, so it counted nothing from 00:00 to 05:30 IST. It now counts from IST midnight | `main.py` |
+
+Not done in Phase 0: the first real publish (operator action), authenticated management routes outside Caddy (the desk itself is still meant for localhost only), and a written backup/restore rehearsal.
 
 ## 1. Recommended product direction
 
@@ -40,7 +58,7 @@ The baseline reports 77 backend and 11 frontend tests passing, a clean TypeScrip
 
 The following have **not** been established from the attachment: current code quality, exact gate implementation, application authentication outside the documented Caddy deployment, account-wide format permissions, remote duplicate-publish recovery, full model/checkpoint licenses, real video quality, measured operating costs, and backup restorability.
 
-There is a particular ingress concern: the historical local runbook tunnels directly to the whole API. The supplied README documents Caddy protection for production, but it does not establish equivalent protection for that local tunnel. Prefer a media-only local proxy or authenticated ingress. This is a risk to verify, not a claim that a running deployment was exploited.
+There is a particular ingress concern: the historical local runbook tunnels directly to the whole API. The supplied README documents Caddy protection for production, but it does not establish equivalent protection for that local tunnel. Prefer a media-only local proxy or authenticated ingress. This is a risk to verify, not a claim that a running deployment was exploited. *(Addressed in Phase 0: the runbook now tunnels the media gateway, and the delivery preflight blocks a public address that serves API routes without authentication.)*
 
 ## 3. Minimal target stack and ownership
 
@@ -176,7 +194,7 @@ On the frozen pack, there must be zero accepted seeded critical errors such as a
 
 A StorySpec is an intermediate content representation, not a prompt with every detail mixed together. It holds reviewed claim IDs, editorial angle, profile, ordered sections, approved copy, source notes, brand/identity versions, media roles, accessibility text and target renditions.
 
-The packaged `examples/storyspec.synthetic.json` is intentionally fictional. It is not a validated schema implementation or publishable news. Convert the design to Pydantic/JSON Schema only after inspecting current models.
+The `examples/storyspec.synthetic.json` fixture described with this plan was not included and is not in the repository. Any such fixture must be visibly fictional, not a validated schema implementation or publishable news. Convert the design to Pydantic/JSON Schema only after inspecting current models.
 
 ### Template-first output
 

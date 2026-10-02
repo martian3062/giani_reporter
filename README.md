@@ -1,8 +1,8 @@
 # Giani AI News Anchor
 
-**Documentation updated:** 3 October 2026 · **Code/status baseline:** supplied README dated 2 October 2026 · **Timezone:** Asia/Kolkata.
+**Documentation updated:** 3 October 2026 · **Verified against the code:** 3 October 2026 · **Timezone:** Asia/Kolkata.
 
-> This update describes the existing project from the supplied README and adds an explicitly proposed upgrade path. The repository source, running services, account permissions and test suite were not supplied or executed in this review. Reported test counts remain historical. No new application feature, deployment, provider connection or publish action is claimed complete.
+> **Phase 0 of the October upgrade plan is implemented and tested:** publish attempts with an unclear outcome are now held and reconciled instead of retried, a publish is bound to the account shown in the dry run, a media-only gateway replaces tunnelling the whole API, and the dry run fetches every slide through the public address before reporting ready. On 3 October 2026, 113 backend tests and 12 frontend tests passed, and the TypeScript and production builds were clean. Phases 1–5 remain proposals. No real Instagram post has been published yet.
 >
 > Full implementation detail: [advanced plan](docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md). Evidence and unresolved checks: [source audit](docs/VERIFIED_SOURCES_2026-10-03.md). The [unchanged original README](docs/BASELINE_README_2026-10-02.md) preserves the setup history and original wording.
 
@@ -45,21 +45,22 @@ The implementation follows the specifications in this repository:
   review to a confirmed Instagram publish, with five interchangeable image
   providers and eleven publish gates.
 
-## Current status (reported on 2 October 2026)
+## Current status (3 October 2026)
 
 | Area | State |
 |---|---|
-| Code | The baseline reports completed implementation, 77 backend tests and 11 frontend tests passing, and a clean TypeScript build. Not independently rerun for this documentation update. |
-| Instagram account | Baseline reports `@gianireporter.ai` connected through Instagram Login as a Creator account; status returned 0/100 at that check. Treat this as an account snapshot, not a universal quota or a current live check. |
+| Code | Phase 0 implemented. 113 backend tests (77 original, 36 new) and 12 frontend tests pass; the TypeScript and production builds are clean. |
+| Instagram account | `@gianireporter.ai` (Creator account) connected through Instagram Login. A read-only status check on 3 October returned 0 of 100 for the account's 24-hour publishing quota. That is a snapshot, not a permanent limit. |
+| Graph API version | Default is now `v25.0`. Meta lists `v21.0` as expiring on 21 January 2027 and `v25.0` on 29 July 2028. Read calls were checked on both. |
 | Publishing switch | Off (`INSTAGRAM_PUBLISH_ENABLED=false`) until the first reviewed test post. |
-| Public media URL | Needs one live tunnel address in `NEWSROOM_PUBLIC_BASE_URL`. |
-| Image generation | No provider key yet. Upload your own photo for real posts. |
+| Public media URL | Needs one live tunnel address pointing at the media gateway. The local `NEWSROOM_PUBLIC_BASE_URL` value is malformed, and the status check now reports it as not ready. |
+| Image generation | No provider key yet. Upload a photo you hold the rights to for real posts. |
 | Production deployment | Not started. Compose needs the Caddy and n8n secrets. |
 
 The setup history, next steps and deadlines are in
 [Instagram publishing: setup log and next steps](#instagram-publishing-setup-log-and-next-steps).
 
-## October 2026 upgrade plan — proposed, not implemented
+## October 2026 upgrade plan
 
 The recommended direction is an **evidence-first newsroom with reusable, claim-linked media**, not a fully autonomous social-posting agent. Keep Signal Desk, Mira, Post Studio, the human editorial angle, all eleven existing publishing checks, and the distinction between manual news-video upload and confirmed Instagram publishing.
 
@@ -67,8 +68,8 @@ The recommended direction is an **evidence-first newsroom with reusable, claim-l
 
 | Priority | Addition | Concrete outcome | Implementation status |
 |---|---|---|---|
-| P0 | Safe first publish and deployment preflight | A real reviewed image reaches the intended account; private routes remain private | Required next work; not completed by this documentation update |
-| P0 | Persisted publish attempts and unknown-outcome reconciliation | A timeout cannot trigger an automatic second post | Proposed hardening of the existing database-backed guard |
+| P0 | Safe first publish and deployment preflight | A real reviewed image reaches the intended account; private routes remain private | **Implemented 3 October 2026:** media-only gateway, delivery preflight in the dry run and publish, destination-bound confirmation. The first real publish is still to be done by the operator |
+| P0 | Persisted publish attempts and unknown-outcome reconciliation | A timeout cannot trigger an automatic second post | **Implemented 3 October 2026:** `submitted` and `unknown_outcome` states, restart recovery, reconcile endpoint and desk panel |
 | P1 | Claim Ledger and Evidence Desk | Every factual sentence points to reviewed evidence, including numbers, dates and qualifications | Proposed |
 | P1 | Release/event memory | Separate paper publication, announcement, API access, weights release, and third-party quantization | Proposed |
 | P1 | Source-change and correction tracking | Identify every script, slide, caption and audio segment affected by a changed claim | Proposed |
@@ -78,7 +79,7 @@ The recommended direction is an **evidence-first newsroom with reusable, claim-l
 | P3 | Media QA and provenance | Check real output, maintain creation/edit history and show synthetic-media disclosure | Proposed |
 | P4 | Durable workers, observability and evaluation | Recover interrupted jobs, measure cost per accepted output, and test factual/approval failures | Proposed |
 
-The detailed module contracts, test cases and six implementation phases are in [the advanced implementation plan](docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md). The packaged [example policy](examples/october_upgrade.proposed.json) is a design artifact: the current application does not consume it.
+The detailed module contracts, test cases and six implementation phases are in [the advanced implementation plan](docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md). The example policy, StorySpec and evaluation files the plan mentions were not included with it and are not in this repository.
 
 ### Proposed architecture
 
@@ -101,7 +102,7 @@ flowchart LR
     Corrections --> Desk
 ```
 
-This is a target design. It is not a claim that the new nodes exist in the supplied repository. A graph here describes data relationships; it does not require a graph database.
+This is a target design. Apart from the guarded Instagram publisher hardened in Phase 0, these nodes do not exist in the code yet. A graph here describes data relationships; it does not require a graph database.
 
 ### 1. Claim Ledger, not just a bibliography
 
@@ -170,11 +171,11 @@ C2PA can document asset provenance and editing history. It does not establish fa
 
 For optional React-based video composition, evaluate Remotion only after checking its organizational license. Its current terms distinguish up-to-three-person use from organizations/collaborations of four or more. Keep the existing FFmpeg engine as the default assembly path. [E13]
 
-The release gate should include unsupported-number detection, stale approvals, prompt injection in sources, duplicate publish requests, ambiguous platform timeouts, source corrections, language QA and real-media validation. The packaged [test scenarios](evals/editorial_cases.proposed.jsonl) are proposed fixtures, **not tests that have passed**.
+The release gate should include unsupported-number detection, stale approvals, prompt injection in sources, duplicate publish requests, ambiguous platform timeouts, source corrections, language QA and real-media validation. Duplicate publish requests and ambiguous platform timeouts are now covered by tests in `apps/api/tests/test_publish_safety.py`; the other cases are still proposals.
 
 ## Architecture
 
-The following six flows describe the **existing implementation as reported in the baseline**, rather than the proposed additions above.
+The following six flows describe the **existing implementation**, checked against the code on 3 October 2026, rather than the proposed additions above.
 
 ```text
 RSS + Hacker News ──> FastAPI + SQLite ──> React Signal Desk
@@ -218,7 +219,7 @@ Publishing is disabled by default, refuses placeholder images outright, refuses
 any revision the reviewer did not see, and cannot post the same revision twice.
 Full setup is in [Instagram-Post-Pipeline.md](Instagram-Post-Pipeline.md).
 
-**Hardening requirement:** the baseline's local duplicate-revision guard is not proof of exactly-once behavior across a remote platform. Persist the provider container/media IDs and introduce an `UNKNOWN_OUTCOME` state before enabling automated retries after a publish timeout. Reconcile ambiguous outcomes instead of blindly creating a second post.
+**Remote outcomes (implemented in Phase 0):** a local database cannot commit Instagram's side of a publish, so the desk records each attempt's state before every irreversible step. See [Publish attempts and reconciliation](#publish-attempts-and-reconciliation).
 
 ## End-to-end architecture flows
 
@@ -350,11 +351,27 @@ sequenceDiagram
 ```
 
 Instagram fetches media from the public URL itself; it cannot fetch from
-`localhost`. In local mode, start a public HTTPS tunnel and set
-`NEWSROOM_PUBLIC_BASE_URL`. In production, use the deployed HTTPS domain or an
-S3-compatible host such as R2. `media_host.py` creates local capability URLs or
-performs S3-compatible uploads, while `instagram.py` performs the Content
-Publishing API calls and optional token diagnostics.
+`localhost`. In local mode, run the media-only gateway
+(`newsroom_api.media_gateway`, port 8090), tunnel **that** to a public HTTPS
+address, and set `NEWSROOM_PUBLIC_BASE_URL` to the tunnel address. The gateway
+serves `/api/public/media/*` and answers 404 to everything else, so the desk,
+API docs and Instagram status never reach the internet. In production, use the
+deployed HTTPS domain behind Caddy or an S3-compatible host such as R2.
+`media_host.py` creates local capability URLs or performs S3-compatible
+uploads, while `instagram.py` performs the Content Publishing API calls and
+optional token diagnostics.
+
+The public media route serves a file only when its token belongs to a real
+(non-placeholder) asset of the post's current revision, and the post is
+approved, publishing or published. Every refusal is the same bare 404.
+
+Before the dry run reports ready, and again before a publish, `delivery.py`
+fetches every slide through the public address and checks the HTTP status,
+content type, file signature and size. It also requires a made-up token to
+return 404, and it blocks if the address serves `/api/health`, `/docs`,
+`/openapi.json` or `/api/instagram/status` without authentication. A pass
+rules out the problems visible from this side; it cannot guarantee
+Instagram's own later fetch.
 
 In Compose, Caddy protects the desk and automation sites with Basic Auth, but
 allows only `/api/public/media/*` through without that challenge because
@@ -393,7 +410,7 @@ file; test a restore before relying on the deployment.
 | Direction and drafting | Optional Anthropic or OpenAI key | Deterministic offline direction |
 | Voice | `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` | Text-only demo artifact, never described as audio |
 | Image generation | One supported image-provider key | Stamped placeholder that cannot publish |
-| Public media | HTTPS base URL or S3-compatible configuration | Instagram dry run remains blocked |
+| Public media | One HTTPS origin (media gateway tunnel or deployment) or S3-compatible configuration | Dry run stays blocked; a malformed address, unreachable slide or exposed API route is reported as a blocker |
 | Instagram | Account ID, token, matching login mode, and enabled switch | No publish attempt; status reports the missing item |
 
 Use `GET /api/capabilities` to inspect provider resolution and
@@ -496,6 +513,7 @@ $env:NEWSROOM_PUBLIC_BASE_URL = 'https://your-tunnel.example.com'
 
 # Meta / Instagram Content Publishing API
 $env:INSTAGRAM_LOGIN_MODE = 'instagram'   # Instagram Login; 'facebook' for the Page-linked route
+$env:INSTAGRAM_GRAPH_VERSION = 'v25.0'    # default; v21.0 expires 21 January 2027
 $env:INSTAGRAM_USER_ID = '...'            # Instagram user id shown next to the generated token
 $env:INSTAGRAM_ACCESS_TOKEN = '...'       # long-lived token (META_ACCESS_TOKEN also read)
 $env:META_APP_ID = '...'                  # optional: token debugging
@@ -537,7 +555,7 @@ without publishing anything.
 
 ### Lessons from the Meta setup
 
-Historical setup notes from the supplied README follow. Meta's current documentation returned rate-limit/fetch errors during this review; the exact current dashboard paths, permissions, token behavior and Graph-version retirement dates were not independently reverified. Use the actual account's diagnostics before relying on these historical instructions.
+Historical setup notes from August 2026 follow. Meta's Graph API version table was read directly on 3 October 2026. The dashboard paths, permissions and token behavior below are what worked in August and have not been rechecked against current Meta documentation. Use the account's own diagnostics before relying on them.
 
 - **Tester invitations do not appear as Instagram notifications.** While the
   Meta app is in Development mode, the Instagram account must accept a tester
@@ -552,7 +570,7 @@ Historical setup notes from the supplied README follow. Meta's current documenta
   Instagram login → Generate access tokens → Add account**. Choose the account,
   approve the permissions and generate the token. Copy the token and the
   Instagram user ID shown next to it.
-- **The baseline records a dashboard-generated token with a 60-day lifetime** and can be used
+- **The token generated in the dashboard in August is a 60-day token** and can be used
   directly. `POST /api/instagram/exchange-token` is only for short-lived tokens
   and requires `META_APP_SECRET`.
 - **Keep tokens out of chats, issues and commits.** Store them only in the
@@ -575,13 +593,14 @@ META_APP_ID=
 META_APP_SECRET=
 ```
 
-`NEWSROOM_PUBLIC_BASE_URL` must contain exactly one URL. A quick Cloudflare
-tunnel gets a new address every time it restarts. Each time, update this value
-and restart the API.
+`NEWSROOM_PUBLIC_BASE_URL` must contain exactly one HTTPS origin; the status
+check now rejects anything else, including two addresses pasted together. A
+quick Cloudflare tunnel gets a new address every time it restarts. Each time,
+update this value and restart the API. The gateway does not read it.
 
 ### Runbook: first test post
 
-**Only Post Studio may publish, after a human reviews the final asset and explicitly confirms it.** This runbook does not execute a publish or enable one automatically.
+**Only Post Studio may publish, after a human reviews the final asset and explicitly confirms it.** This runbook does not publish or enable publishing automatically.
 
 1. Start the API in a fresh PowerShell window:
 
@@ -592,52 +611,77 @@ and restart the API.
    uv run uvicorn newsroom_api.main:app --host 127.0.0.1 --port 8000 --env-file ..\..\infra\.env
    ```
 
-2. Expose **only the existing media-capability route**, not the raw API, through a local public tunnel. With Caddy installed and the packaged example copied to `examples/Caddyfile.media-only`, run from the repository root:
+2. Start the media-only gateway in a second window. It serves post media and nothing else:
 
    ```powershell
-   caddy validate --config .\examples\Caddyfile.media-only --adapter caddyfile
-   caddy run --config .\examples\Caddyfile.media-only --adapter caddyfile
+   cd E:\giani_reporter\apps\api
+   $env:UV_PROJECT_ENVIRONMENT = 'E:\cache\venvs\giani_reporter'
+   $env:UV_CACHE_DIR = 'E:\cache\uv'
+   uv run uvicorn newsroom_api.media_gateway:app --host 127.0.0.1 --port 8090 --env-file ..\..\infra\.env
    ```
 
-   In another window:
+3. In a third window, tunnel the **gateway**, never the API:
 
    ```powershell
    cloudflared tunnel --url http://127.0.0.1:8090
    ```
 
-   The example proxy only passes `/api/public/media/*` to port 8000 and returns 404 elsewhere. It is a proposed, unexecuted local configuration, not a production authentication system. Validate the existing per-asset token checks and reject invalid tokens before exposing the route. Keep the desk on localhost. For a remote desk, use authenticated production ingress instead. [E18]
-
-3. Copy exactly one HTTPS tunnel address to `NEWSROOM_PUBLIC_BASE_URL` in the untracked environment file and restart the API. A changing tunnel URL requires the same update. Do not use this temporary address as the long-term production host.
-4. From outside localhost, confirm a current valid media URL returns only its intended bytes; invalid/stale tokens and unrelated paths such as `/api/instagram/status`, `/docs` and `/api/health` must not expose the application. Test URL-encoding/path variants as part of the ingress audit. Redact capability tokens from logs.
-5. Check configuration locally:
+4. Put the printed `https://….trycloudflare.com` address, and nothing else, in `NEWSROOM_PUBLIC_BASE_URL` in `infra/.env`. Restart the API (step 1). Do not use this temporary address as the long-term production host.
+5. Check the configuration locally. `media_host.ready` must be `true`:
 
    ```powershell
    Invoke-RestMethod http://127.0.0.1:8000/api/capabilities
    Invoke-RestMethod http://127.0.0.1:8000/api/instagram/status
    ```
 
-6. Start Signal Desk, open Posts, select square format and upload a photo whose rights you hold. This tests the existing real-media path without introducing an image-provider dependency. The proposed template provider is not yet implemented.
-7. Review every asset and its metadata, clear the eleven checks, approve the exact revision and run the dry run. Resolve all reported blockers. Confirm the destination account in the review screen.
-8. Enable `INSTAGRAM_PUBLISH_ENABLED=true` only for this reviewed test, restart the API, and use the existing typed `PUBLISH` confirmation. Record the returned platform result and inspect the actual post. Restore the switch to `false` afterward.
-9. When the remote outcome is ambiguous, stop and reconcile the account/provider state. Do not repeat the action merely because the local response timed out.
+6. Start Signal Desk (see [Quick start](#quick-start)), open **Posts**, choose **square** and upload a photo you hold the rights to. Uploaded photos count as real media; generated placeholders never pass the gate. The proposed template provider is not implemented yet.
+7. Review every slide and its metadata, clear the eleven checks, approve the revision and click **Check Instagram** (the dry run). It now fetches the slide through the tunnel and checks that the tunnel exposes nothing but media. Resolve every blocker. Confirm the account name and id in the warning.
+8. Set `INSTAGRAM_PUBLISH_ENABLED=true` only for this reviewed test, restart the API, run the dry run again and type `PUBLISH`. The publish is bound to the account the dry run showed. Inspect the live post. Set the switch back to `false` afterwards.
+9. If the desk shows **Publish outcome unknown**, do not retry. Use the panel described in [Publish attempts and reconciliation](#publish-attempts-and-reconciliation).
+
+### Publish attempts and reconciliation
+
+A local database cannot commit Instagram's side of a publish. Each attempt therefore records its state before every irreversible step:
+
+| Attempt state | Meaning | Slot for this revision |
+|---|---|---|
+| `pending`, `creating`, `publishing` | Containers are being created and processed; nothing is live yet | Held; released as `failed` on error or restart |
+| `submitted` | Recorded just before `media_publish` is sent | Held |
+| `unknown_outcome` | The publish request timed out, the connection dropped, Instagram answered 5xx or returned no media id, or the API restarted after `submitted` | Held; the post stays locked until reconciled |
+| `published` | Instagram returned the media id, or reconciliation confirmed the post is live | Held permanently |
+| `failed` | A known failure before publication, such as a 4xx answer or a refused container | Released; a new typed confirmation can publish again |
+
+Errors before `media_publish` cannot have made the post live, so they release the slot. A clear 4xx rejection of `media_publish` releases it too. Anything that may have reached Instagram becomes `unknown_outcome`.
+
+`POST /api/posts/{post_id}/publications/{publication_id}/reconcile` resolves an `unknown_outcome` attempt. It never publishes.
+
+| `action` | Behavior |
+|---|---|
+| `check` | Reads the container status. `PUBLISHED` records the post as live and matches its media id by caption. `FINISHED`, `ERROR` or `EXPIRED` release the slot, but only after `INSTAGRAM_RECONCILE_SETTLE_SECONDS` (default 60) have passed since the attempt. Anything else stays unresolved |
+| `confirm_published` | Records the post as live using a `media_id` the operator found on the profile; Instagram must recognize that id |
+| `confirm_not_published` | Releases the slot after the operator checked the profile; requires `confirmation` to be exactly `NOT PUBLISHED` |
+
+The Posts page shows the same three actions in a **Publish outcome unknown** panel.
+
+Each attempt also stores the destination account id and `manifest_sha256`, a SHA-256 of the account, revision, format, full caption, alt text and every slide's file hash. It records exactly what was sent, and to whom.
 
 ### Remaining work and deadlines
 
 | Item | Required action | Evidence/status |
 |---|---|---|
-| Public media and real image | Validate media-only HTTPS delivery and an owned uploaded photo | Outstanding in the baseline |
-| First real publish | Perform the reviewed runbook; preserve the external media ID/result | Not performed in this review |
-| Access-token expiry | Inspect actual expiry; refresh or reconnect using the documented account route | The historical estimate was around 18 October 2026 from 19 August; token rotation could change it |
-| Graph API version | Read the configured `INSTAGRAM_GRAPH_VERSION`, verify its official support window, test a supported migration | Baseline mentions `v21.0` and 21 January 2027; that retirement date is **unverified here**, not an operational promise |
+| Public media and real image | Run the gateway and tunnel, fix `NEWSROOM_PUBLIC_BASE_URL`, upload an owned photo | Gateway and preflight implemented; the local URL is still malformed |
+| First real publish | Perform the runbook; keep the returned media id and permalink | Not performed yet |
+| Access-token expiry | Refresh or reconnect before it lapses; the app's exchange/refresh routes return `expires_in` | Estimated around 18 October 2026 (60 days from 19 August). Exact expiry is unknown because `META_APP_ID` and `META_APP_SECRET` are not set, so `debug_token` cannot run |
+| Graph API version | Default moved to `v25.0`; read calls checked on 3 October | `v25.0` is supported until 29 July 2028 per Meta's version table. Set `INSTAGRAM_GRAPH_VERSION=v21.0` to roll back |
 | Format/account support | Validate each media type, login route, permission and current account capability | A format choice in the UI does not establish API publish eligibility |
-| Production deployment | Set Caddy/n8n secrets, configure persistent storage and test a restore | Not started according to baseline |
-| New model adapters | Pin exact API/model revisions, evaluate output, document rights and cost | Proposed only |
+| Production deployment | Set Caddy/n8n secrets, configure persistent storage and test a restore | Not started |
+| Phase 1 onward | Source intake, Claim Ledger and Evidence Desk, then the later phases | Proposed; see the [advanced plan](docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md) |
 
-Do not hard-code “100 posts per day,” a permanent token lifetime or a retirement deadline from a README snapshot. Read the applicable account/API response and authoritative version documentation. No credential was inspected or refreshed during this update.
+Do not hard-code "100 posts per day" or a permanent token lifetime from a README snapshot. Read the account's own API response. No credential was refreshed or changed during this update.
 
 ## Test and build
 
-These are the baseline commands, not evidence that tests were rerun for this update. New workflow and integration tests must be added alongside the existing suite; see the proposed evaluation pack.
+On 3 October 2026, 113 backend tests and 12 frontend tests passed, and `npm run build` was clean. `tests/test_publish_safety.py` covers the Phase 0 behavior: ambiguous and rejected publish calls, restart recovery, every reconcile action, destination binding, the manifest, the media gateway, the delivery preflight and the daily-cap boundary at IST midnight. If Vitest workers time out on a busy machine, run `npx vitest run --maxWorkers=1`.
 
 Backend:
 
@@ -685,30 +729,27 @@ Post Studio lives in `apps/api/src/newsroom_api/`:
 posts.py          Creative direction, caption rules, the eleven checks
 imaging.py        Image providers and Instagram-exact normalization
 media_host.py     Public URLs: local serving or S3-compatible upload
-instagram.py      Content Publishing API client
-post_pipeline.py  Stage orchestration and the publish sequence
+public_media.py   Rules for serving media by capability token
+media_gateway.py  Media-only public app for local tunnels (port 8090)
+delivery.py       Dry-run fetch of every slide and API-exposure probe
+instagram.py      Content Publishing API client and error classification
+post_pipeline.py  Stage orchestration, the publish sequence, reconciliation
 ```
 
 Generated databases, credentials, audio, videos, render manifests, and local
 environment files are excluded from version control.
 
 
-## Documentation package and implementation boundaries
+## Documentation and implementation boundaries
 
 ```text
-README.md                                      Updated project README
-START_HERE.md                                  Package use and audit scope
-docs/BASELINE_README_2026-10-02.md               Exact original, preserved
-docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md Proposed modules, phases and acceptance tests
-docs/VERIFIED_SOURCES_2026-10-03.md             External evidence and unresolved claims
-examples/Caddyfile.media-only                  Unexecuted media-only local proxy example
-examples/october_upgrade.proposed.json         Inert proposed policy/model registry
-examples/storyspec.synthetic.json              Fictional design fixture, not news
-evals/editorial_cases.proposed.jsonl            Proposed cases, not completed test results
-evals/README.md                                Evaluation procedure and limitations
+README.md                                        This file
+docs/BASELINE_README_2026-10-02.md               The 2 October README, byte for byte
+docs/ADVANCED_IMPLEMENTATION_PLAN_2026-10-03.md  Modules, phases and acceptance tests
+docs/VERIFIED_SOURCES_2026-10-03.md              External evidence and unresolved claims
 ```
 
-Files in `examples/` are not wired into the application. Proposed route names, tables and modules in the implementation plan are not assertions about existing source code. Existing relative links to build plans, infrastructure and scripts refer to the original repository, which is not bundled here.
+Phase 0 is implemented as described above. The planned Caddy media-only proxy example was replaced by the Python media gateway, which runs without installing Caddy. Route names, tables and modules for Phases 1–5 in the implementation plan are proposals, not existing code.
 
 ## External reference keys
 

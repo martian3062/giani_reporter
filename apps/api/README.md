@@ -92,7 +92,8 @@ Instagram publishing (Meta Graph API).
 | `META_APP_ID` | unset | Meta app id. `FACEBOOK_APP_ID` is also read |
 | `META_APP_SECRET` | unset | Meta app secret. `FACEBOOK_APP_SECRET` is also read. Enables `appsecret_proof` on Graph calls and the token exchange endpoints |
 | `INSTAGRAM_LOGIN_MODE` | `facebook` | `facebook` uses `graph.facebook.com`; `instagram` uses `graph.instagram.com` |
-| `INSTAGRAM_GRAPH_VERSION` | `v21.0` | Graph API version |
+| `INSTAGRAM_GRAPH_VERSION` | `v25.0` | Graph API version (v21.0 expires 21 January 2027) |
+| `INSTAGRAM_RECONCILE_SETTLE_SECONDS` | `60` | Wait before an automatic "not published" reconcile verdict |
 | `INSTAGRAM_USER_ID` | unset | Instagram Business or Creator account id |
 | `INSTAGRAM_ACCESS_TOKEN` | unset | Long-lived user token. `META_ACCESS_TOKEN` and `FACEBOOK_ACCESS_TOKEN` are also read |
 | `INSTAGRAM_PUBLISH_ENABLED` | `false` | Master switch. Publishing is refused while false |
@@ -100,7 +101,9 @@ Instagram publishing (Meta Graph API).
 | `INSTAGRAM_POLL_ATTEMPTS` / `INSTAGRAM_POLL_INTERVAL_SECONDS` | `30` / `3` | Container status polling |
 | `NEWSROOM_SITE` | unset | When `NEWSROOM_PUBLIC_BASE_URL` is unset, a bare hostname becomes `https://<host>` so Docker/production can omit the duplicate |
 
-**Local dev:** set keys in your shell, tunnel the API (`cloudflared tunnel --url http://127.0.0.1:8000` or ngrok), and point `NEWSROOM_PUBLIC_BASE_URL` at the tunnel URL.
+**Local dev:** set keys in your shell, run the media-only gateway (`uv run uvicorn newsroom_api.media_gateway:app --host 127.0.0.1 --port 8090`), tunnel the gateway rather than the API (`cloudflared tunnel --url http://127.0.0.1:8090` or ngrok), and point `NEWSROOM_PUBLIC_BASE_URL` at the tunnel URL. The dry run blocks an address that also serves API routes.
+
+**Unclear publish outcomes:** if Instagram does not answer the publish request clearly, the attempt becomes `unknown_outcome` and the post stays locked. Resolve it with `POST /api/posts/{id}/publications/{publication_id}/reconcile` (`check`, `confirm_published` with a media id, or `confirm_not_published` with the phrase `NOT PUBLISHED`). See the root README for details.
 
 **Production (Compose):** put the same keys in `infra/.env`. Set `NEWSROOM_SITE` to your real domain (no `http://` prefix) and either leave `NEWSROOM_PUBLIC_BASE_URL` unset or set it explicitly. Instagram media is served at `/api/public/media/*`, which Caddy exempts from basic auth.
 
