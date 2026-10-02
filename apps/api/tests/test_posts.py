@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from newsroom_api import delivery
 from newsroom_api import instagram as instagram_module
 from newsroom_api import post_pipeline
 from newsroom_api.config import Settings
@@ -510,7 +511,7 @@ def test_publish_is_blocked_until_every_gate_clears(client: TestClient) -> None:
 
     response = client.post(
         f"/api/posts/{post['id']}/publish",
-        json={"confirm": True, "expected_revision": post["revision"]},
+        json={"confirm": True, "expected_revision": post["revision"], "expected_account_id": ACCOUNT_ID},
     )
     assert response.status_code == 409
     assert response.json()["detail"]["blockers"]
@@ -522,7 +523,7 @@ def test_publish_refuses_a_revision_the_reviewer_did_not_see(
     post = approved_post(client)
     response = client.post(
         f"/api/posts/{post['id']}/publish",
-        json={"confirm": True, "expected_revision": post["revision"] + 1},
+        json={"confirm": True, "expected_revision": post["revision"] + 1, "expected_account_id": ACCOUNT_ID},
     )
     assert response.status_code == 409
     assert "changed since it was reviewed" in response.json()["detail"]
@@ -542,9 +543,12 @@ def test_editing_after_approval_revokes_the_approval(client: TestClient) -> None
     assert edited["checks"]["human_reviewed"] is False
 
 
+ACCOUNT_ID = "1784000000000000"
+
+
 def publishing_settings(settings: Settings) -> Settings:
     settings.instagram_publish_enabled = True
-    settings.instagram_user_id = "1784000000000000"
+    settings.instagram_user_id = ACCOUNT_ID
     settings.instagram_access_token = "test-token"
     settings.public_base_url = "https://desk.example.com"
     settings.instagram_poll_interval_seconds = 0
@@ -608,6 +612,12 @@ def publishing_client(
         return fake
 
     monkeypatch.setattr(post_pipeline, "InstagramClient", factory)
+
+    async def delivery_ok(*_: Any, **__: Any) -> list[str]:
+        return []
+
+    # The delivery preflight fetches real URLs; it has its own tests.
+    monkeypatch.setattr(delivery, "check_public_delivery", delivery_ok)
     app = create_app(settings)
     with TestClient(app) as test_client:
         yield test_client, created, settings
@@ -621,7 +631,7 @@ def test_a_configured_desk_publishes_once_and_records_the_permalink(
 
     response = client.post(
         f"/api/posts/{post['id']}/publish",
-        json={"confirm": True, "expected_revision": post["revision"]},
+        json={"confirm": True, "expected_revision": post["revision"], "expected_account_id": ACCOUNT_ID},
     )
     assert response.status_code == 200, response.text
     published = response.json()
@@ -652,7 +662,7 @@ def test_a_published_post_is_frozen(publishing_client: Any) -> None:
     post = approved_post(client)
     client.post(
         f"/api/posts/{post['id']}/publish",
-        json={"confirm": True, "expected_revision": post["revision"]},
+        json={"confirm": True, "expected_revision": post["revision"], "expected_account_id": ACCOUNT_ID},
     )
 
     edit = client.patch(
@@ -677,7 +687,7 @@ def test_a_second_publish_of_the_same_revision_is_refused(
 ) -> None:
     client, created, _ = publishing_client
     post = approved_post(client)
-    body = {"confirm": True, "expected_revision": post["revision"]}
+    body = {"confirm": True, "expected_revision": post["revision"], "expected_account_id": ACCOUNT_ID}
 
     assert client.post(f"/api/posts/{post['id']}/publish", json=body).status_code == 200
     repeat = client.post(f"/api/posts/{post['id']}/publish", json=body)
@@ -746,7 +756,7 @@ def test_a_failed_publish_returns_the_post_to_approved_and_allows_a_retry(
     client, created, _ = publishing_client
     created["fail_on"] = "container"
     post = approved_post(client)
-    body = {"confirm": True, "expected_revision": post["revision"]}
+    body = {"confirm": True, "expected_revision": post["revision"], "expected_account_id": ACCOUNT_ID}
 
     failed = client.post(f"/api/posts/{post['id']}/publish", json=body)
     assert failed.status_code == 502
@@ -785,7 +795,7 @@ def test_publishing_a_carousel_creates_children_then_the_parent(
     approved = client.post(f"/api/posts/{post['id']}/approve").json()
     response = client.post(
         f"/api/posts/{post['id']}/publish",
-        json={"confirm": True, "expected_revision": approved["revision"]},
+        json={"confirm": True, "expected_revision": approved["revision"], "expected_account_id": ACCOUNT_ID},
     )
     assert response.status_code == 200, response.text
 
@@ -831,7 +841,7 @@ def test_a_generated_non_demo_post_publishes_end_to_end(
 
     published = client.post(
         f"/api/posts/{post['id']}/publish",
-        json={"confirm": True, "expected_revision": approved["revision"]},
+        json={"confirm": True, "expected_revision": approved["revision"], "expected_account_id": ACCOUNT_ID},
     ).json()
     assert published["status"] == "published"
     assert published["publications"][0]["permalink"]
@@ -849,8 +859,23 @@ def test_public_media_token_serves_the_file_and_rejects_a_bad_token(
     # The token is not exposed by the API; read it from the repository.
     repository = client.app.state.repository
     asset = repository.list_post_assets(post["id"])[0]
+    url = f"/api/public/media/{asset['public_token']}.jpg"
 
-    served = client.get(f"/api/public/media/{asset['public_token']}.jpg")
+    # Unreviewed media is never public, even with a valid token.
+    assert client.get(url).status_code == 404
+
+    client.patch(
+        f"/api/posts/{post['id']}",
+        json={
+            "headline": "Server rooms at dawn",
+            "caption": f"Server rooms at dawn.\n\n{AI_DISCLOSURE}",
+            "hashtags": ["#AI", "#Infrastructure"],
+            "alt_text": "A dark server room lit by blue indicator lights.",
+        },
+    )
+    assert client.post(f"/api/posts/{post['id']}/approve").status_code == 200
+
+    served = client.get(url)
     assert served.status_code == 200
     assert served.headers["content-type"] == "image/jpeg"
 
@@ -872,6 +897,23 @@ def test_media_host_readiness_requires_https(settings: Settings) -> None:
     assert media_host_readiness(settings)["ready"] is False
     settings.public_base_url = "https://desk.example.com"
     assert media_host_readiness(settings)["ready"] is True
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
+        # Two tunnel addresses pasted into one value.
+        "https://a.ngrok-free.devhttps://b.trycloudflare.com",
+        "https://",
+        "https://desk.example.com/?token=1",
+        "https://desk example.com",
+    ],
+)
+def test_media_host_readiness_rejects_a_malformed_address(
+    settings: Settings, base: str
+) -> None:
+    settings.public_base_url = base
+    assert media_host_readiness(settings)["ready"] is False
 
 
 def test_capabilities_reports_what_is_missing(client: TestClient) -> None:

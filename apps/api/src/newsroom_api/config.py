@@ -110,13 +110,16 @@ class Settings:
     meta_app_id: str = ""
     meta_app_secret: str = ""
     instagram_login_mode: str = "facebook"
-    instagram_graph_version: str = "v21.0"
+    instagram_graph_version: str = "v25.0"
     instagram_user_id: str = ""
     instagram_access_token: str = ""
     instagram_publish_enabled: bool = False
     instagram_daily_post_limit: int = 5
     instagram_poll_attempts: int = 30
     instagram_poll_interval_seconds: float = 3.0
+    # An automatic "not published" verdict waits this long after the
+    # ambiguous attempt, so a late-processing publish can surface first.
+    instagram_reconcile_settle_seconds: float = 60.0
 
     def __post_init__(self) -> None:
         self.api_root = self.api_root.resolve()
@@ -213,7 +216,7 @@ class Settings:
             .strip()
             .lower(),
             instagram_graph_version=os.getenv(
-                "INSTAGRAM_GRAPH_VERSION", "v21.0"
+                "INSTAGRAM_GRAPH_VERSION", "v25.0"
             ),
             instagram_user_id=_first_env("INSTAGRAM_USER_ID", "META_USER_ID"),
             instagram_access_token=_first_env(
@@ -230,6 +233,9 @@ class Settings:
             instagram_poll_attempts=_env_int("INSTAGRAM_POLL_ATTEMPTS", 30),
             instagram_poll_interval_seconds=float(
                 os.getenv("INSTAGRAM_POLL_INTERVAL_SECONDS", "3")
+            ),
+            instagram_reconcile_settle_seconds=float(
+                os.getenv("INSTAGRAM_RECONCILE_SETTLE_SECONDS", "60")
             ),
         )
 

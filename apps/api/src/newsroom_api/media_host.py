@@ -196,7 +196,27 @@ def media_host_readiness(settings: Settings) -> dict[str, object]:
     detail = "Set NEWSROOM_PUBLIC_BASE_URL to a public HTTPS address"
     if ready:
         detail = f"Instagram will fetch media from {base}"
-        if not base.startswith("https://"):
-            detail += ". Instagram requires HTTPS; this address is not HTTPS."
+        problem = _public_base_url_problem(base)
+        if problem:
+            detail += f". {problem}"
             ready = False
     return {"mode": "local", "ready": ready, "detail": detail}
+
+
+def _public_base_url_problem(base: str) -> str:
+    """Why ``base`` cannot be the root Instagram fetches media from, if so."""
+    if not base.startswith("https://"):
+        return "Instagram requires HTTPS; this address is not HTTPS."
+    parts = urlsplit(base)
+    if (
+        not parts.hostname
+        or "://" in base[len("https://") :]
+        or any(character.isspace() for character in base)
+        or parts.query
+        or parts.fragment
+    ):
+        return (
+            "This is not a single valid address. Set exactly one HTTPS "
+            "origin, such as https://example.trycloudflare.com"
+        )
+    return ""

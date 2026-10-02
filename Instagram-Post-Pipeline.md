@@ -143,7 +143,9 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/api/instagram/refresh-
 ```
 
 `GET /api/instagram/status` confirms the account, the token, and your remaining
-25-posts-per-24-hours API quota without publishing anything.
+API publishing quota without publishing anything. Read the quota from that
+response: it reported 100 posts per 24 hours for the connected account on
+3 October 2026, and Meta can change it.
 
 ### 2.3 Media needs a public HTTPS URL
 
@@ -153,22 +155,32 @@ laptop on `127.0.0.1` is not reachable from Menlo Park.
 
 Two supported answers:
 
-**A. Tunnel the API (fastest to try)**
+**A. Tunnel the media gateway (fastest to try)**
+
+Tunnel the media-only gateway, never the API itself. The gateway serves
+`/api/public/media/*` and answers 404 to everything else, so the desk, the
+API docs and the Instagram status stay off the internet. The dry run refuses
+to report ready if the public address also serves API routes.
 
 ```powershell
+# Next to the running API, from apps/api:
+uv run uvicorn newsroom_api.media_gateway:app --host 127.0.0.1 --port 8090 --env-file ..\..\infra\.env
+
 # Cloudflare Tunnel — free, no account needed for a quick trial
-cloudflared tunnel --url http://127.0.0.1:8000
+cloudflared tunnel --url http://127.0.0.1:8090
 # → https://random-words-1234.trycloudflare.com
 
 $env:NEWSROOM_MEDIA_HOST = 'local'
 $env:NEWSROOM_PUBLIC_BASE_URL = 'https://random-words-1234.trycloudflare.com'
 ```
 
-The API then serves each slide at
+Each slide is then served at
 `/api/public/media/<40-hex-token>.jpg`. The token is minted per asset and
-replaced whenever slides are regenerated, so the URL is the capability. In the
-Docker deployment, `infra/Caddyfile` exempts exactly this one path from basic
-auth — Instagram arrives with no credentials — and gates everything else.
+replaced whenever slides are regenerated, so the URL is the capability. Only
+real (non-placeholder) slides of the current revision of an approved,
+publishing or published post are served. In the Docker deployment,
+`infra/Caddyfile` exempts exactly this one path from basic auth — Instagram
+arrives with no credentials — and gates everything else.
 
 **B. Object storage (what to run in production)**
 
@@ -333,6 +345,8 @@ curl -s -X POST $API/posts/$ID/publish -H 'content-type: application/json' \
    tunnel or bucket. `GET /api/instagram/status` is green before you ever set
    `INSTAGRAM_PUBLISH_ENABLED=true`.
 
-*Instagram Graph API behaviour verified against v21.0. Re-check the publishing
-limit, the token lifetime, and the supported aspect ratios each quarter — all
-three have moved in the last year.*
+*Instagram Graph API behaviour originally verified against v21.0. The default
+is now v25.0: read calls were checked on it on 3 October 2026, and publishing
+on it is confirmed by the first real post. Re-check the publishing limit, the
+token lifetime, and the supported aspect ratios each quarter — all three have
+moved in the last year.*

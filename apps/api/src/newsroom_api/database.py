@@ -293,6 +293,18 @@ class Repository:
                     """
                 )
 
+            publication_columns = {
+                row["name"]
+                for row in connection.execute(
+                    "PRAGMA table_info(post_publications)"
+                ).fetchall()
+            }
+            if "manifest_sha256" not in publication_columns:
+                connection.execute(
+                    "ALTER TABLE post_publications "
+                    "ADD COLUMN manifest_sha256 TEXT NOT NULL DEFAULT ''"
+                )
+
     def seed_demo_stories(self, timestamp: str) -> None:
         with self.connect() as connection:
             for story in DEMO_STORIES:
@@ -1333,8 +1345,8 @@ class Repository:
                     INSERT INTO post_publications (
                         id, post_id, status, post_revision, container_id,
                         media_id, permalink, ig_user_id, error,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        manifest_sha256, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         values["id"],
@@ -1346,6 +1358,7 @@ class Repository:
                         values.get("permalink", ""),
                         values.get("ig_user_id", ""),
                         values.get("error", ""),
+                        values.get("manifest_sha256", ""),
                         values["created_at"],
                         values["updated_at"],
                     ),
@@ -1388,6 +1401,61 @@ class Repository:
                 return None
         return self.get_publication(publication_id)
 
+    def mark_publication_submitted(
+        self, publication_id: str, timestamp: str
+    ) -> dict[str, Any] | None:
+        """Record, before sending it, that media_publish is about to go out.
+
+        From this point a crash or an unclear answer may mean the post is
+        live, so the attempt can no longer be released as a plain failure.
+        """
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE post_publications
+                SET status = 'submitted', updated_at = ?
+                WHERE id = ? AND status = 'publishing'
+                """,
+                (timestamp, publication_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get_publication(publication_id)
+
+    def mark_publication_unknown(
+        self,
+        publication_id: str,
+        *,
+        post_id: str,
+        error: str,
+        timestamp: str,
+    ) -> dict[str, Any] | None:
+        """Hold the publish slot: Instagram may or may not have posted it.
+
+        The partial unique index only frees a revision's slot for 'failed'
+        attempts, so this state blocks any retry until a reconciliation.
+        """
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE post_publications
+                SET status = 'unknown_outcome', error = ?, updated_at = ?
+                WHERE id = ? AND status NOT IN ('published', 'failed')
+                """,
+                (error[:1000], timestamp, publication_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+            connection.execute(
+                """
+                UPDATE posts
+                SET status = 'publishing', error = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (error[:1000], timestamp, post_id),
+            )
+        return self.get_publication(publication_id)
+
     def finish_publication(
         self,
         publication_id: str,
@@ -1396,6 +1464,7 @@ class Repository:
         media_id: str,
         permalink: str,
         timestamp: str,
+        note: str = "",
     ) -> dict[str, Any] | None:
         with self.connect() as connection:
             cursor = connection.execute(
@@ -1404,11 +1473,11 @@ class Repository:
                 SET status = 'published',
                     media_id = ?,
                     permalink = ?,
-                    error = '',
+                    error = ?,
                     updated_at = ?
                 WHERE id = ? AND status != 'published'
                 """,
-                (media_id, permalink, timestamp, publication_id),
+                (media_id, permalink, note[:1000], timestamp, publication_id),
             )
             if cursor.rowcount == 0:
                 return None
@@ -1469,7 +1538,7 @@ class Repository:
             row = connection.execute(
                 """
                 SELECT COUNT(*) AS count FROM post_publications
-                WHERE status IN ('published', 'creating', 'publishing', 'pending')
+                WHERE status != 'failed'
                   AND created_at >= ?
                 """,
                 (timestamp,),
@@ -1477,27 +1546,62 @@ class Repository:
         return int(row["count"] or 0)
 
     def recover_interrupted_publications(self, timestamp: str) -> None:
-        """A restart mid-publish must never silently retry a live post."""
-        message = (
-            "The API restarted during publishing. Check Instagram before "
-            "retrying, in case the post went live."
+        """A restart mid-publish must never silently retry a live post.
+
+        Attempts that stopped before media_publish was sent cannot have gone
+        live and are released. An attempt that was already 'submitted' may
+        be live, so it keeps its slot as 'unknown_outcome' until reconciled.
+        """
+        not_sent = (
+            "The API restarted before the publish request was sent, so "
+            "nothing went live. Publish again when ready."
+        )
+        maybe_sent = (
+            "The API restarted after the publish request was sent. The post "
+            "may be live; reconcile this attempt before publishing again."
         )
         with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE post_publications
+                SET status = 'unknown_outcome', error = ?, updated_at = ?
+                WHERE status = 'submitted'
+                """,
+                (maybe_sent, timestamp),
+            )
+            connection.execute(
+                """
+                UPDATE posts
+                SET error = ?, updated_at = ?
+                WHERE status = 'publishing'
+                  AND EXISTS (
+                      SELECT 1 FROM post_publications
+                      WHERE post_publications.post_id = posts.id
+                        AND post_publications.status = 'unknown_outcome'
+                  )
+                """,
+                (maybe_sent, timestamp),
+            )
             connection.execute(
                 """
                 UPDATE post_publications
                 SET status = 'failed', error = ?, updated_at = ?
                 WHERE status IN ('pending', 'creating', 'publishing')
                 """,
-                (message, timestamp),
+                (not_sent, timestamp),
             )
             connection.execute(
                 """
                 UPDATE posts
                 SET status = 'approved', error = ?, updated_at = ?
                 WHERE status = 'publishing'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM post_publications
+                      WHERE post_publications.post_id = posts.id
+                        AND post_publications.status = 'unknown_outcome'
+                  )
                 """,
-                (message, timestamp),
+                (not_sent, timestamp),
             )
 
     def post_counts(self) -> dict[str, Any]:

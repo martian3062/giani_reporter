@@ -182,16 +182,27 @@ export interface PostAsset {
   created_at: string;
 }
 
+export type PublicationStatus =
+  | "pending"
+  | "creating"
+  | "publishing"
+  | "submitted"
+  | "unknown_outcome"
+  | "published"
+  | "failed";
+
 export interface Publication {
   id: string;
   post_id: string;
-  status: "pending" | "creating" | "publishing" | "published" | "failed";
+  status: PublicationStatus;
   post_revision: number;
   container_id: string;
   media_id: string;
   permalink: string;
   ig_user_id: string;
   error: string;
+  /** SHA-256 of exactly what the attempt sent, and to which account. */
+  manifest_sha256?: string;
   created_at: string;
   updated_at: string;
 }
@@ -240,6 +251,25 @@ export interface PublishPreview {
   ready: boolean;
   quota: Record<string, unknown>;
   account: Record<string, unknown>;
+  /** The account the publish is bound to; sent back with the confirmation. */
+  destination_account_id?: string;
+}
+
+export type ReconcileAction =
+  | "check"
+  | "confirm_published"
+  | "confirm_not_published";
+
+export interface ReconcileBody {
+  action: ReconcileAction;
+  media_id?: string;
+  confirmation?: string;
+}
+
+export interface ReconcileResult {
+  outcome: "published" | "not_published" | "unresolved";
+  detail: string;
+  post: Post;
 }
 
 export interface PostFormatSpec {
