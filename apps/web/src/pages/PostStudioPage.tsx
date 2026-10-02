@@ -22,7 +22,10 @@ import type {
   Post,
   PostFormat,
   PublishPreview,
+  ReconcileBody,
 } from "../types";
+
+const NOT_PUBLISHED_PHRASE = "NOT PUBLISHED";
 
 const FORMAT_FALLBACK: { id: PostFormat; label: string; max_assets: number }[] = [
   { id: "feed_square", label: "Feed square 1:1", max_assets: 1 },
@@ -83,6 +86,8 @@ export function PostStudioPage() {
   const [busy, setBusy] = useState<string>("");
   const [preview, setPreview] = useState<PublishPreview | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  const [liveMediaId, setLiveMediaId] = useState("");
+  const [notPublishedText, setNotPublishedText] = useState("");
   const uploadRef = useRef<HTMLInputElement>(null);
 
   const active = useMemo(
@@ -234,12 +239,42 @@ export function PostStudioPage() {
 
   const handlePublish = () =>
     run("publish", async () => {
-      if (!active) return;
-      const published = await api.publishPost(active.id, active.revision);
-      replacePost(published);
-      setConfirmText("");
-      setPreview(null);
-      notify("Published to Instagram.", "success");
+      if (!active || !preview) return;
+      try {
+        const published = await api.publishPost(
+          active.id,
+          active.revision,
+          preview.destination_account_id ?? "",
+        );
+        replacePost(published);
+        notify("Published to Instagram.", "success");
+      } catch (error) {
+        // The attempt may have reached Instagram even though this request
+        // failed; show what the API recorded so an unclear outcome can be
+        // reconciled instead of retried.
+        try {
+          replacePost(await api.post(active.id));
+        } catch {
+          // Keep the original error; the next load shows the state.
+        }
+        throw error;
+      } finally {
+        setConfirmText("");
+        setPreview(null);
+      }
+    });
+
+  const handleReconcile = (body: ReconcileBody) =>
+    run("reconcile", async () => {
+      const attempt = active?.publications.find(
+        (item) => item.status === "unknown_outcome",
+      );
+      if (!active || !attempt) return;
+      const result = await api.reconcilePublication(active.id, attempt.id, body);
+      replacePost(result.post);
+      setLiveMediaId("");
+      setNotPublishedText("");
+      notify(result.detail, result.outcome === "unresolved" ? "info" : "success");
     });
 
   if (mode !== "live") {
@@ -266,6 +301,9 @@ export function PostStudioPage() {
   const checks = active?.checks ?? {};
   const failing = Object.entries(checks).filter(([, passed]) => !passed);
   const live = active?.publications.find((item) => item.status === "published");
+  const unresolved = active?.publications.find(
+    (item) => item.status === "unknown_outcome",
+  );
 
   return (
     <div className="page-stack">
@@ -591,7 +629,10 @@ export function PostStudioPage() {
                       This posts to{" "}
                       <strong>
                         {String(preview.account.username ?? "your account")}
-                      </strong>{" "}
+                      </strong>
+                      {preview.destination_account_id
+                        ? ` (account ${preview.destination_account_id})`
+                        : ""}{" "}
                       immediately and cannot be undone from this desk.
                     </p>
                     <label className="field">
@@ -618,6 +659,82 @@ export function PostStudioPage() {
                   </>
                 ) : null}
               </div>
+            ) : null}
+
+            {unresolved ? (
+              <section
+                className="publish-panel reconcile-panel"
+                aria-label="Unresolved publish attempt"
+              >
+                <h3>Publish outcome unknown</h3>
+                <p className="publish-warning">
+                  Instagram did not give a clear answer to the publish request,
+                  so this post may already be live. Publishing stays locked
+                  until this attempt is reconciled. Nothing here publishes.
+                </p>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => void handleReconcile({ action: "check" })}
+                  disabled={Boolean(busy)}
+                >
+                  {busy === "reconcile" ? (
+                    <Loader2 size={17} className="spin" />
+                  ) : (
+                    <RefreshCw size={17} />
+                  )}
+                  Ask Instagram what happened
+                </button>
+                <label className="field">
+                  <span>Found the post on the profile? Its media id</span>
+                  <input
+                    value={liveMediaId}
+                    onChange={(event) => setLiveMediaId(event.target.value)}
+                    placeholder="Instagram media id"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() =>
+                    void handleReconcile({
+                      action: "confirm_published",
+                      media_id: liveMediaId.trim(),
+                    })
+                  }
+                  disabled={!liveMediaId.trim() || Boolean(busy)}
+                >
+                  <CheckCircle2 size={17} />
+                  Record as live
+                </button>
+                <label className="field">
+                  <span>
+                    Checked the profile and it is not there? Type{" "}
+                    {NOT_PUBLISHED_PHRASE}
+                  </span>
+                  <input
+                    value={notPublishedText}
+                    onChange={(event) => setNotPublishedText(event.target.value)}
+                    placeholder={NOT_PUBLISHED_PHRASE}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() =>
+                    void handleReconcile({
+                      action: "confirm_not_published",
+                      confirmation: notPublishedText,
+                    })
+                  }
+                  disabled={
+                    notPublishedText !== NOT_PUBLISHED_PHRASE || Boolean(busy)
+                  }
+                >
+                  <XCircle size={17} />
+                  Release for a new attempt
+                </button>
+              </section>
             ) : null}
 
             {live ? (

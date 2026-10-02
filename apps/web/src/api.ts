@@ -13,6 +13,8 @@ import type {
   PostPatchBody,
   PublishPackage,
   PublishPreview,
+  ReconcileBody,
+  ReconcileResult,
   RenderJob,
   ScriptSection,
   Story,
@@ -559,12 +561,33 @@ export const api = {
       ),
     ),
 
-  publishPost: async (id: string, expectedRevision: number) =>
+  publishPost: async (
+    id: string,
+    expectedRevision: number,
+    expectedAccountId: string,
+  ) =>
     unwrapObject<Post>(
       await request<unknown>(
         `/posts/${encodeURIComponent(id)}/publish`,
-        json({ confirm: true, expected_revision: expectedRevision }),
+        json({
+          confirm: true,
+          expected_revision: expectedRevision,
+          expected_account_id: expectedAccountId,
+        }),
         180_000,
       ),
+    ),
+
+  reconcilePublication: async (
+    postId: string,
+    publicationId: string,
+    body: ReconcileBody,
+  ) =>
+    request<ReconcileResult>(
+      `/posts/${encodeURIComponent(postId)}/publications/${encodeURIComponent(
+        publicationId,
+      )}/reconcile`,
+      json(body),
+      30_000,
     ),
 };

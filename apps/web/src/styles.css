@@ -4187,3 +4187,13 @@ select:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+.reconcile-panel {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.reconcile-panel .field {
+  width: 100%;
+}

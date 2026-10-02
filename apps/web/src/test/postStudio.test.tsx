@@ -219,6 +219,7 @@ describe("Post Studio", () => {
       ready: true,
       quota: {},
       account: { username: "giani.desk" },
+      destination_account_id: "1784",
     };
     const publishCall = vi.fn(() =>
       jsonResponse({
@@ -271,6 +272,95 @@ describe("Post Studio", () => {
     expect(
       await screen.findByRole("link", { name: /open on instagram/i }),
     ).toHaveAttribute("href", "https://instagr.am/p/media-1");
+
+    const publishRequest = vi
+      .mocked(fetch)
+      .mock.calls.find(
+        ([url, init]) =>
+          String(url).endsWith("/publish") && init?.method === "POST",
+      );
+    expect(JSON.parse(String(publishRequest?.[1]?.body))).toEqual({
+      confirm: true,
+      expected_revision: 2,
+      expected_account_id: "1784",
+    });
+  });
+
+  it("locks publishing and reconciles an attempt with an unknown outcome", async () => {
+    const user = userEvent.setup();
+    const attempt = {
+      id: "pub-1",
+      post_id: "post-1",
+      post_revision: 2,
+      container_id: "c1",
+      ig_user_id: "1784",
+      created_at: "2026-10-03T00:00:00Z",
+      updated_at: "2026-10-03T00:00:00Z",
+    };
+    const stuck = basePost({
+      status: "publishing",
+      approved_revision: 2,
+      checks: { ...allChecks(true), human_reviewed: true },
+      error: "Instagram did not give a clear answer. The post may be live.",
+      publications: [
+        {
+          ...attempt,
+          status: "unknown_outcome",
+          media_id: "",
+          permalink: "",
+          error: "Instagram request failed: ReadTimeout",
+        },
+      ],
+    });
+    const reconcileCall = vi.fn(() =>
+      jsonResponse({
+        outcome: "published",
+        detail: "The post is live.",
+        post: {
+          ...stuck,
+          status: "published",
+          error: "",
+          publications: [
+            {
+              ...attempt,
+              status: "published",
+              media_id: "media-7",
+              permalink: "https://instagr.am/p/media-7",
+              error: "",
+            },
+          ],
+        },
+      }),
+    );
+    routeFetch({
+      "GET /capabilities": () => jsonResponse(capabilities),
+      "GET /posts": () => jsonResponse([stuck]),
+      "POST /reconcile": reconcileCall,
+    });
+    renderPosts();
+
+    const panel = await screen.findByRole("region", {
+      name: /unresolved publish attempt/i,
+    });
+    expect(screen.getByRole("button", { name: /check instagram/i })).toBeDisabled();
+
+    const release = within(panel).getByRole("button", {
+      name: /release for a new attempt/i,
+    });
+    expect(release).toBeDisabled();
+    await user.type(within(panel).getByPlaceholderText("NOT PUBLISHED"), "not published");
+    expect(release).toBeDisabled();
+
+    await user.click(
+      within(panel).getByRole("button", { name: /ask instagram what happened/i }),
+    );
+    await waitFor(() => expect(reconcileCall).toHaveBeenCalledOnce());
+    expect(
+      await screen.findByRole("link", { name: /open on instagram/i }),
+    ).toHaveAttribute("href", "https://instagr.am/p/media-7");
+    expect(
+      screen.queryByRole("region", { name: /unresolved publish attempt/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("surfaces the backend's blockers instead of a bare status code", async () => {
